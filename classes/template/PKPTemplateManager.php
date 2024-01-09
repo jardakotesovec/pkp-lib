@@ -788,6 +788,19 @@ class PKPTemplateManager extends Smarty
      */
     public function setupBackendPage()
     {
+        $this->unregisterPlugin('modifier', 'escape');
+
+        /** prevent {{ JS }} injection  */
+        $this->registerPlugin('modifier', 'escape', function ($string, $esc_type = 'html', $char_set = 'ISO-8859-1') {
+            $result = $string;
+            if($esc_type === 'html') {
+                $result = str_replace('{{', '', $string);
+                $result = str_replace('}}', '', $result);
+            }
+
+            return $this->smartyEscape($result, $esc_type, $char_set);
+        });
+
         $request = Application::get()->getRequest();
         $dispatcher = $request->getDispatcher();
         /** @var PageRouter */
