@@ -21,6 +21,7 @@ export default {
 	 */
 	_globalComponents: {},
 
+	_slots: {},
 	/**
 	 * Initialize a Vue controller
 	 *
@@ -100,5 +101,13 @@ export default {
 	 */
 	getAllComponents() {
 		return this._globalComponents;
+	},
+
+	registerSlot(slotId, component, position) {
+		this._slots[slotId] = {position, component};
+	},
+
+	getSlot(slotId) {
+		return this._slots[slotId];
 	},
 };

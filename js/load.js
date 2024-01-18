@@ -95,11 +95,18 @@ import FieldUploadImage from '@/components/Form/fields/FieldUploadImage.vue';
 import VueHighlightJS from 'vue3-highlightjs';
 import 'highlight.js/styles/default.css';
 
+import IDiv from '@/components/IDiv/IDiv.vue';
+
 // Panel components from UI Library
 import ListPanel from '@/components/ListPanel/ListPanel.vue';
 
 // Helper for initializing and tracking Vue controllers
 import VueRegistry from './classes/VueRegistry.js';
+
+VueRegistry.registerComponent('idiv', IDiv);
+
+// DONE IN PLUGIN
+VueRegistry.registerSlot('SubmissionSummaryModal_1_1_1', 'Spinner', 'replace');
 
 // Register global components
 VueRegistry.registerComponent('Badge', Badge);
