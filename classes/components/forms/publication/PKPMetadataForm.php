@@ -60,6 +60,7 @@ class PKPMetadataForm extends FormComponent
                 'apiUrl' => str_replace('__vocab__', SubmissionKeywordDAO::CONTROLLED_VOCAB_SUBMISSION_KEYWORD, $suggestionUrlBase),
                 'locales' => $this->locales,
                 'value' => (array) $publication->getData('keywords'),
+                'splitSelectionBySeparator' => true
             ]));
         }
 

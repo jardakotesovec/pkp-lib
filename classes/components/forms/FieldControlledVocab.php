@@ -23,6 +23,9 @@ class FieldControlledVocab extends FieldBaseAutosuggest
     /** @var array Key/value list of languages this field should support. Key = locale code. Value = locale name */
     public $locales = [];
 
+    /** @var boolean When entering text with comma separated values its automatically splitted to individual items */
+    public $splitSelectionBySeparator = false;
+
     /**
      * @copydoc Field::getConfig()
      */
@@ -42,6 +45,9 @@ class FieldControlledVocab extends FieldBaseAutosuggest
         } else {
             $config['selected'] = array_map([$this, 'mapSelected'], $this->value);
         }
+
+        $config['splitSelectionBySeparator'] = $this->splitSelectionBySeparator;
+
 
         return $config;
     }

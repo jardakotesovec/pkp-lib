@@ -50,6 +50,7 @@ class Details extends TitleAbstractForm
                 'locales' => $this->locales,
                 'value' => (array) $publication->getData('keywords'),
                 'isRequired' => $context->getData('keywords') === Context::METADATA_REQUIRE ? true : false,
+                'splitSelectionBySeparator' => true
             ]), [FIELD_POSITION_AFTER, 'title']);
         }
     }
