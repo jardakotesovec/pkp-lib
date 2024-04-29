@@ -124,6 +124,9 @@ msgstr "Decline reason sent by email"
 msgid "reviewer.submission.reviewRound.emailLog.defaultMessage"
 msgstr "No reason given to the decline of the review invitation."
 
+msgid "reviewer.submission.reviewRound.reviewNotCompleted"
+msgstr "The review was not completed."
+
 msgid "reviewer.submission.reviewRound.reviewDeclineDate"
 msgstr "Declined Date"
 
