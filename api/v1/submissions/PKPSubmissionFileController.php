@@ -69,6 +69,7 @@ class PKPSubmissionFileController extends PKPBaseController
                 Role::ROLE_ID_SUB_EDITOR,
                 Role::ROLE_ID_ASSISTANT,
                 Role::ROLE_ID_AUTHOR,
+                Role::ROLE_ID_REVIEWER
             ]),
         ])->group(function () {
 
@@ -161,6 +162,7 @@ class PKPSubmissionFileController extends PKPBaseController
         $request = $this->getRequest();
 
         $params = [];
+        error_log('getmany file');
 
         foreach ($illuminateRequest->query() as $param => $val) {
             switch ($param) {
@@ -195,7 +197,7 @@ class PKPSubmissionFileController extends PKPBaseController
         ];
 
         // Managers can access files for submissions they are not assigned to
-        if (!$stageAssignments && !count(array_intersect([Role::ROLE_ID_MANAGER, Role::ROLE_ID_SITE_ADMIN], $userRoles))) {
+        if (!$stageAssignments && !count(array_intersect([Role::ROLE_ID_MANAGER, Role::ROLE_ID_SITE_ADMIN, Role::ROLE_ID_REVIEWER], $userRoles))) {
             return response()->json([
                 'error' => __('api.403.unauthorized'),
             ], Response::HTTP_FORBIDDEN);
