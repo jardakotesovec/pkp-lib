@@ -422,6 +422,9 @@ class Schema extends \PKP\core\maps\Schema
                 'roundId' => (int) $reviewAssignment->getReviewRoundId(),
                 'recommendation' => $reviewAssignment->getRecommendation(),
                 'dateCancelled' => $reviewAssignment->getData('dateCancelled'),
+                'reviewerFullName' => $reviewAssignment->getData('reviewerFullName'),
+                'reviewMethod' => $reviewAssignment->getData('reviewMethod')
+
             ];
         }
 
