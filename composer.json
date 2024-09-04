@@ -7,7 +7,6 @@
 		"elcobvg/laravel-opcache": "^0.5.0",
 		"ezyang/htmlpurifier": "^4.17",
 		"firebase/php-jwt": "6.*",
-		"fpdf/fpdf": "^1.86",
 		"geoip2/geoip2": "~3.0",
 		"gettext/gettext": "5.*",
 		"gettext/translator": "1.2.*",
@@ -27,9 +26,8 @@
 		"sokil/php-isocodes-db-i18n": "^4.0",
 		"symfony/mailer": "^7.0",
 		"tinymce/tinymce": "^5.7",
-		"wikimedia/less.php": "3.*",
-      "ext-dom": "*"
-    },
+		"wikimedia/less.php": "3.*"
+	},
 	"require-dev": {
 		"phpunit/phpunit": "~11",
 		"psy/psysh": "@stable",
