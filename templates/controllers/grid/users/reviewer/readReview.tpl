@@ -10,6 +10,7 @@
  *}
 
 {* Form handler attachment implemented in application-specific versions of this template. *}
+{assign var="uuid" value=""|uniqid|escape}
 
 <script>
 	$(function() {ldelim}
@@ -34,31 +35,14 @@
 
 	{fbvFormSection}
 		<div id="reviewAssignment-{$reviewAssignment->getId()|escape}">
-            <div>
-                <h2>{$reviewAssignment->getReviewerFullName()|escape}</h2>
-                <div id="btnExport" class="pkp_button pkp_helpers_align_right">
-                    {translate key="editor.review.download"} <i class="fa fa-caret-down"></i>
-                </div>
-            </div>
-            <div id="exportOptions" style="position:absolute;right:0" class="shadow -mb bg-secondary z-10 mt-8 me-8 hidden">
-                <div>
-                    <a
-                        class="border-solid border-b-form-fields p-3 block"
-                        href="{url op="exportPDF" submissionId="{$reviewAssignment->getSubmissionId()|escape}" stageId="{$reviewAssignment->getStageId()|escape}" reviewRoundId="{$reviewAssignment->getReviewRoundId()|escape}" reviewAssignmentId="{$reviewAssignment->getId()}" authorFriendly=true}">{translate key="editor.review.authorOnly"} (PDF)
-                    </a>
-                    <a
-                        class="border-1 border-b-form-fields p-3 block"
-                        href="{url op="exportXML" submissionId="{$reviewAssignment->getSubmissionId()|escape}" stageId="{$reviewAssignment->getStageId()|escape}" reviewRoundId="{$reviewAssignment->getReviewRoundId()|escape}" reviewAssignmentId="{$reviewAssignment->getId()}" authorFriendly=true}">{translate key="editor.review.authorOnly"} (XML)</a>
-                    </a>
-                    <a
-                        class="border-1 border-b-form-fields p-3 block"
-                        href="{url op="exportPDF" submissionId="{$reviewAssignment->getSubmissionId()|escape}" stageId="{$reviewAssignment->getStageId()|escape}" reviewRoundId="{$reviewAssignment->getReviewRoundId()|escape}" reviewAssignmentId="{$reviewAssignment->getId()}"}">{translate key="editor.review.allSections"} (PDF)</a>
-                    </a>
-                    <a
-                        class="border-1 border-b-form-fields p-3 block"
-                        href="{url op="exportXML" submissionId="{$reviewAssignment->getSubmissionId()|escape}" stageId="{$reviewAssignment->getStageId()|escape}" reviewRoundId="{$reviewAssignment->getReviewRoundId()|escape}" reviewAssignmentId="{$reviewAssignment->getId()}"}">{translate key="editor.review.allSections"} (XML)</a>
-                    </a>
-                </div>
+			<div id="readReview-{$uuid}">
+                <reviewer-manager-read-review-modal 
+                    title="{$reviewAssignment->getReviewerFullName()|escape}" 
+                    submission-id="{$reviewAssignment->getSubmissionId()|escape}"
+                    review-assignment-id="{$reviewAssignment->getId()}"
+                    review-round-id="{$reviewAssignment->getReviewRoundId()|escape}"
+                    submission-stage-id="{$reviewAssignment->getStageId()|escape}"
+                />
             </div>
 
 			{fbvFormSection class="description"}
@@ -142,3 +126,7 @@
 		{fbvFormButtons id="closeButton" hideCancel=false submitText="common.confirm"}
 	{/fbvFormArea}
 </form>
+
+<script>
+    pkp.registry.init('readReview-{$uuid}', 'Container');
+</script>
