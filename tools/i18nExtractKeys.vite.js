@@ -61,4 +61,4 @@ function extractRegexPlugin({extraKeys}) {
 	};
 }
 
-module.exports = extractRegexPlugin;
+export default extractRegexPlugin;

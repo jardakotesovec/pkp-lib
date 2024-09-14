@@ -898,6 +898,16 @@ class PKPTemplateManager extends Smarty
             ]
         );
 
+        // The legacy stylesheet for the backend
+        $this->addStyleSheet(
+            'pkpLib',
+            $dispatcher->url($request, PKPApplication::ROUTE_COMPONENT, null, 'page.PageHandler', 'css'),
+            [
+                'priority' => self::STYLE_SEQUENCE_CORE,
+                'contexts' => 'backend',
+            ]
+        );
+
         // Stylesheet compiled from Vue.js single-file components
         $this->addStyleSheet(
             'build',
@@ -908,15 +918,6 @@ class PKPTemplateManager extends Smarty
             ]
         );
 
-        // The legacy stylesheet for the backend
-        $this->addStyleSheet(
-            'pkpLib',
-            $dispatcher->url($request, PKPApplication::ROUTE_COMPONENT, null, 'page.PageHandler', 'css'),
-            [
-                'priority' => self::STYLE_SEQUENCE_CORE,
-                'contexts' => 'backend',
-            ]
-        );
 
         // Set up required state properties
         $this->setState([
