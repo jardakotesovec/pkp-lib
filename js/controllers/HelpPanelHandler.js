@@ -46,7 +46,7 @@
 		// about content getting swapped out on the page either, as any new
 		// help links loaded will bubble up to the body tag.
 		$('body').click(function(e) {
-			var $self = $(e.target),
+			var $self = $(e.target.closest('button')),
 					options;
 			if (!$self.hasClass('requestHelpPanel') &&
 					!$self.parents('.requestHelpPanel').length) {
@@ -54,6 +54,7 @@
 			}
 			e.preventDefault();
 			options = $.extend({}, $self.data(), {caller: $self});
+			console.log('help button trigger:', options);
 			$element.trigger('pkp.HelpPanel.Open', options);
 		});
 
@@ -186,6 +187,7 @@
 				this.callbackWrapper(this.handleContentLinks_));
 
 		// Load the appropriate help content
+		console.log('load help content:', options.topic)
 		this.loadHelpContent_(options.topic, this.helpLocale_);
 		this.requestedSection_ = options.section || '';
 
