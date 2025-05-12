@@ -1,0 +1,62 @@
+{
+	"title": "DataCitation",
+	"description": "A Data Citation in a Publication.",
+	"properties": {
+		"id": {
+            "type": "integer",
+            "origin": "primary",
+            "apiSummary": true
+        },
+        "publicationId": {
+            "type": "integer",
+            "origin": "primary",
+            "apiSummary": true
+        },
+        "seq": {
+            "type": "integer",
+            "origin": "primary"
+        },
+        "title": {
+            "type": "string",
+            "origin": "setting",
+            "description": "The title of the dataset.",
+            "apiSummary": true
+        },
+        "url": {
+            "type": "string",
+            "origin": "setting",
+            "description": "The Dataset URL.",
+            "apiSummary": true
+        },
+        "persistentIdentifier": {
+            "type": "string",
+            "origin": "setting",
+            "description": "Persistent Identifier.",
+            "apiSummary": true
+        },
+        "repositoryName": {
+            "type": "string",
+            "origin": "setting",
+            "description": "Repository name.",
+            "apiSummary": true
+        },
+        "creators": {
+            "type": "string",
+            "origin": "setting",
+            "description": "Dataset creators, comma separated.",
+            "apiSummary": true
+        },
+        "dataType": {
+            "type": "string",
+            "origin": "setting",
+            "description": "Type of Data.",
+            "apiSummary": true
+        },
+        "license": {
+            "type": "string",
+            "origin": "setting",
+            "description": "Data License.",
+            "apiSummary": true
+        }
+    }
+}

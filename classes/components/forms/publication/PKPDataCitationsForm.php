@@ -52,11 +52,5 @@ class PKPDataCitationsForm extends FormComponent
             'value' => $publication->getData('dataAvailability'),
         ]));
 
-        $this->addField(new FieldTextarea('dataCitationsRaw', [
-            'label' => __('submission.dataCitations'),
-            'description' => __('submission.dataCitations.description'),
-            'value' => $publication->getData('dataCitationsRaw'),
-            'isRequired' => $isRequired
-        ]));
     }
 }

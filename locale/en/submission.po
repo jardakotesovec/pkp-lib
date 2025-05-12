@@ -749,6 +749,30 @@ msgstr "Discussion Files"
 msgid "submission.coverage"
 msgstr "Coverage Information"
 
+msgid "submission.dataCitation.dataCitations"
+msgstr "Data Citations"
+
+msgid "submission.dataCitation.dataCitations.description"
+msgstr "This table allows users to add formal data citations, ensuring datasets are properly credited and appear alongside other references in the publication."
+
+msgid "submission.dataCitation.add"
+msgstr "Add a new Data Citation"
+
+msgid "submission.dataCitation.edit"
+msgstr "Edit a Data Citation"
+
+msgid "submission.dataCitation.title"
+msgstr "Title"
+
+msgid "submission.dataCitation.title.description"
+msgstr "The title of the Data Citation"
+
+msgid "submission.dataCitation.persistentIdentifier"
+msgstr "Persistent Identifier"
+
+msgid "submission.dataCitation.persistentIdentifier.description"
+msgstr "A persistent identifier for the Data Citation, for example DOI"
+
 msgid "submission.details"
 msgstr "Submission Details"
 
