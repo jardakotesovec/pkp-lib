@@ -1649,7 +1649,7 @@ class PKPTemplateManager extends Smarty
         ) {
             $this->shareTemplateVariables($this->getTemplateVars());
 
-            return $template instanceof \Illuminate\View\View
+            echo $template instanceof \Illuminate\View\View
                 ? $template->render()
                 : view($template)->render();
         }
