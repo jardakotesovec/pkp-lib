@@ -1652,6 +1652,7 @@ class PKPTemplateManager extends Smarty
             echo $template instanceof \Illuminate\View\View
                 ? $template->render()
                 : view($template)->render();
+            return;
         }
         
         // Actually display the template.
