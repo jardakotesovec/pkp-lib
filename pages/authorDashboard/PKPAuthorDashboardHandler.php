@@ -25,7 +25,6 @@ use APP\publication\Publication;
 use APP\submission\Submission;
 use APP\template\TemplateManager;
 use Illuminate\Support\Enumerable;
-use PKP\components\forms\publication\PKPCitationsForm;
 use PKP\components\forms\publication\PKPDataCitationsForm;
 use PKP\components\forms\publication\PKPMetadataForm;
 use PKP\components\forms\publication\TitleAbstractForm;
@@ -242,12 +241,10 @@ abstract class PKPAuthorDashboardHandler extends Handler
         );
 
         $titleAbstractForm = $this->getTitleAbstractForm($latestPublicationApiUrl, $locales, $latestPublication, $submissionContext);
-        $citationsForm = new PKPCitationsForm($latestPublicationApiUrl, $latestPublication);
         $dataCitationsForm = new PKPDataCitationsForm($latestPublicationApiUrl, $locales, $latestPublication);
 
         $templateMgr->setConstants([
             'FORM_TITLE_ABSTRACT' => $titleAbstractForm::FORM_TITLE_ABSTRACT,
-            'FORM_CITATIONS' => $citationsForm::FORM_CITATIONS,
             'FORM_DATA_CITATIONS' => $dataCitationsForm::FORM_DATA_CITATIONS,
         ]);
 

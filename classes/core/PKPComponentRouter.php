@@ -185,7 +185,6 @@ class PKPComponentRouter extends PKPRouter
 
             // Give plugins a chance to intervene
             if (!Hook::call('LoadComponentHandler', [&$component, &$op, &$componentInstance])) {
-                
                 if (empty($component)) {
                     return null;
                 }
@@ -203,6 +202,7 @@ class PKPComponentRouter extends PKPRouter
                         $className = 'PKP\\' . strtr($componentFileNamePart, '/', '\\');
                         $componentInstance = new $className();
                         break;
+
 
                     default:
                         // Request to non-existent handler
@@ -250,11 +250,8 @@ class PKPComponentRouter extends PKPRouter
      */
     public function route(PKPRequest $request): void
     {
-        
         // Determine the requested service endpoint.
         $rpcServiceEndpoint = $this->getRpcServiceEndpoint($request);
-
-
 
         // Retrieve RPC arguments from the request.
         $args = $request->getUserVars();

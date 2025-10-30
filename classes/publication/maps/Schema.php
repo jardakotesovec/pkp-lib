@@ -21,7 +21,6 @@ use APP\submission\Submission;
 use Illuminate\Support\Enumerable;
 use PKP\context\Context;
 use PKP\dataCitation\DataCitation;
-use PKP\db\DAORegistry;
 use PKP\services\PKPSchemaService;
 use PKP\submission\Genre;
 
@@ -147,12 +146,19 @@ class Schema extends \PKP\core\maps\Schema
                     // DATACITATION TODO, WHAT IS THE PROPER ELOQUENT WAY?
                     $output[$prop] = DataCitation::where('publication_id', $publication->getId())
                         ->get()
-                        ->map(function ($dataCitation) {
+                        ->map(function (DataCitation $dataCitation) {
                             return [
                                 'id' => $dataCitation->id,
+                                'publicationId' => $dataCitation->publicationId,
                                 'seq' => $dataCitation->seq,
                                 'title' => $dataCitation->title,
-                                'persistentIdentifier' => $dataCitation->persistentIdentifier,
+                                'identifierType' => $dataCitation->identifierType,
+                                'identifier' => $dataCitation->identifier,
+                                'relationshipType' => $dataCitation->relationshipType,
+                                'repository' => $dataCitation->repository,
+                                'year' => $dataCitation->year,
+                                'creators' => $dataCitation->creators,
+                                'url' => $dataCitation->url,
                             ];
                         })
                         ->sortBy('seq')

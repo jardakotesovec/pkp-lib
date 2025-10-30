@@ -394,7 +394,8 @@ abstract class Repository
             $newPublication->getData('citationsRaw')
         );
 
-        // DATACITATIONS TODO
+        // DATACITATIONS TODO - NEW VERSION
+        
 
         $genreDao = DAORegistry::getDAO('GenreDAO'); /** @var \PKP\submission\GenreDAO $genreDao */
         $genres = $genreDao->getEnabledByContextId($context->getId());

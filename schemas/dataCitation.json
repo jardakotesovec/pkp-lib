@@ -12,50 +12,88 @@
             "origin": "primary",
             "apiSummary": true
         },
-        "seq": {
-            "type": "integer",
-            "origin": "primary"
-        },
+		"seq": {
+			"type": "integer",
+            "origin": "primary",
+			"description": "The sequence number of data citation.",
+			"default": 0,
+			"validation": [
+				"nullable"
+			]
+		},
         "title": {
             "type": "string",
             "origin": "setting",
+            "multilingual": false,
             "description": "The title of the dataset.",
             "apiSummary": true
         },
+        "identifierType": {
+            "type": "string",
+            "origin": "setting",
+            "multilingual": false,
+            "description": "The identifier type for the dataset.",
+            "apiSummary": true
+        },
+        "identifier": {
+            "type": "string",
+            "origin": "setting",
+            "multilingual": false,
+            "description": "The identifier for the dataset.",
+            "apiSummary": true
+        },
+        "relationshipType": {
+            "type": "string",
+            "origin": "setting",
+            "multilingual": false,
+            "description": "The type of relationship between the data and the publication.",
+            "apiSummary": true
+        },
+        "repository": {
+            "type": "string",
+            "origin": "setting",
+            "multilingual": false,
+            "description": "The repository where the dataset is stored or the publisher of the dataset.",
+            "apiSummary": true
+        },
+        "year": {
+            "type": "string",
+            "origin": "setting",
+            "multilingual": false,
+            "description": "The year the dataset was published.",
+            "apiSummary": true
+        },
+		"creators": {
+			"type": "array",
+			"description": "A list of the creators for this dataset.",
+			"multilingual": false,
+			"apiSummary": true,
+			"validation": [
+				"nullable"
+			],
+			"items": {
+				"type": "object",
+				"properties": {
+					"displayName": {
+						"type": "string"
+					},
+					"givenName": {
+						"type": "string"
+					},
+					"familyName": {
+						"type": "string"
+					},
+					"orcid": {
+						"type": "string"
+					}
+				}
+			}
+		},
         "url": {
             "type": "string",
             "origin": "setting",
-            "description": "The Dataset URL.",
-            "apiSummary": true
-        },
-        "persistentIdentifier": {
-            "type": "string",
-            "origin": "setting",
-            "description": "Persistent Identifier.",
-            "apiSummary": true
-        },
-        "repositoryName": {
-            "type": "string",
-            "origin": "setting",
-            "description": "Repository name.",
-            "apiSummary": true
-        },
-        "creators": {
-            "type": "string",
-            "origin": "setting",
-            "description": "Dataset creators, comma separated.",
-            "apiSummary": true
-        },
-        "dataType": {
-            "type": "string",
-            "origin": "setting",
-            "description": "Type of Data.",
-            "apiSummary": true
-        },
-        "license": {
-            "type": "string",
-            "origin": "setting",
-            "description": "Data License.",
+            "multilingual": false,
+            "description": "The URL of the dataset.",
             "apiSummary": true
         }
     }

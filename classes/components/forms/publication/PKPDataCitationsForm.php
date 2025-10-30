@@ -17,14 +17,7 @@ namespace PKP\components\forms\publication;
 
 use APP\publication\Publication;
 use PKP\components\forms\FieldRichTextarea;
-use PKP\components\forms\FieldTextarea;
 use PKP\components\forms\FormComponent;
-use APP\core\Application;
-use APP\facades\Repo;
-use PKP\controlledVocab\ControlledVocab;
-use PKP\components\forms\FieldControlledVocab;
-use PKP\components\forms\FieldText;
-use PKP\context\Context;
 
 class PKPDataCitationsForm extends FormComponent
 {
@@ -32,18 +25,15 @@ class PKPDataCitationsForm extends FormComponent
     public $id = self::FORM_DATA_CITATIONS;
     public $method = 'PUT';
 
-    public bool $isRequired;
-
     /**
      * Constructor
      *
      * @param string $action URL to submit the form to
      */
-    public function __construct(string $action, array $locales, Publication $publication, bool $isRequired = false)
+    public function __construct(string $action, array $locales, Publication $publication)
     {
         $this->action = $action;
         $this->locales = $locales;
-        $this->isRequired = $isRequired;
 
         $this->addField(new FieldRichTextarea('dataAvailability', [
             'label' => __('submission.dataAvailability'),
