@@ -71,23 +71,27 @@ class PKPDataCitationController extends PKPBaseController
      */
     public function getGroupRoutes(): void
     {
-        Route::get('', $this->getMany(...))
-            ->name('dataCitation.getMany');
+        Route::prefix('publications/{publicationId}')
+            ->whereNumber('publicationId')
+            ->group(function () {
+                Route::get('', $this->getMany(...))
+                    ->name('dataCitation.getMany');
 
-        Route::get('{dataCitationId}', $this->get(...))
-            ->name('dataCitation.getDataCitation')
-            ->whereNumber('dataCitationId');
+                Route::get('{dataCitationId}', $this->get(...))
+                    ->name('dataCitation.getDataCitation')
+                    ->whereNumber('dataCitationId');
 
-        Route::put('{dataCitationId}', $this->add(...))
-            ->name('dataCitation.add');
+                Route::post('', $this->add(...))
+                    ->name('dataCitation.add');
 
-        Route::put('{dataCitationId}', $this->edit(...))
-            ->name('dataCitation.edit')
-            ->whereNumber('dataCitationId');
+                Route::put('{dataCitationId}', $this->edit(...))
+                    ->name('dataCitation.edit')
+                    ->whereNumber('dataCitationId');
 
-        Route::delete('{dataCitationId}', $this->delete(...))
-            ->name('dataCitation.delete')
-            ->whereNumber('dataCitationId');
+                Route::delete('{dataCitationId}', $this->delete(...))
+                    ->name('dataCitation.delete')
+                    ->whereNumber('dataCitationId');
+            });
     }
 
     /**
@@ -115,7 +119,7 @@ class PKPDataCitationController extends PKPBaseController
      */
     public function get(Request $illuminateRequest): JsonResponse
     {
-        $dataCitation = Repo::dataCitation()->get((int)$illuminateRequest->route('dataCitationId'));
+        $announcement = DataCitation::find((int) $illuminateRequest->route('dataCitationId'));
 
         if (!$dataCitation) {
             return response()->json([
@@ -133,29 +137,20 @@ class PKPDataCitationController extends PKPBaseController
      */
     public function getMany(Request $illuminateRequest): JsonResponse
     {
-        $collector = Repo::dataCitation()->getCollector()
-            ->limit(self::DEFAULT_COUNT)
-            ->offset(0);
+        $dataCitations = DataCitation::limit(self::DEFAULT_COUNT)->offset(0);
 
-        foreach ($illuminateRequest->query() as $param => $val) {
-            switch ($param) {
-                case 'count':
-                    $collector->limit(min((int)$val, self::MAX_COUNT));
-                    break;
-                case 'offset':
-                    $collector->offset((int)$val);
-                    break;
-            }
+        if ($illuminateRequest->route('publicationId')) {
+            $dataCitations->withPublicationId($illuminateRequest->route('publicationId'));
         }
 
-        Hook::call('API::dataCitations::params', [$collector, $illuminateRequest]);
-
-        $dataCitations = $collector->getMany();
+        Hook::run('API::dataCitations::params', [$dataCitations, $illuminateRequest]);
 
         return response()->json([
-            'itemsMax' => $collector->getCount(),
-            'items' => Repo::dataCitation()->getSchemaMap()->summarizeMany($dataCitations)->values(),
+            'itemsMax' => $dataCitations->count(),
+            'items' => Repo::dataCitation()->getSchemaMap()->summarizeMany($dataCitations->get())->values(),
         ], Response::HTTP_OK);
+
+
     }
 
     /**
@@ -163,8 +158,8 @@ class PKPDataCitationController extends PKPBaseController
      */
     public function add(Request $illuminateRequest): JsonResponse
     {
-
         $params = $this->convertStringsToSchema(PKPSchemaService::SCHEMA_DATA_CITATION, $illuminateRequest->input());
+        $params['publicationId'] = (int) $illuminateRequest->route('publicationId');
 
         $errors = Repo::dataCitation()->validate(null, $params);
         if (!empty($errors)) {
@@ -176,13 +171,12 @@ class PKPDataCitationController extends PKPBaseController
         return response()->json(Repo::dataCitation()->getSchemaMap()->map($dataCitation), Response::HTTP_OK);
     }
 
-
     /**
      * Edit a data citation.
      */
     public function edit(Request $illuminateRequest): JsonResponse
     {
-        $dataCitation = Repo::dataCitation()->get((int)$illuminateRequest->route('dataCitationId'));
+        $dataCitation = DataCitation::find((int)$illuminateRequest->route('dataCitationId'));
 
         if (!$dataCitation) {
             return response()->json([
@@ -191,17 +185,16 @@ class PKPDataCitationController extends PKPBaseController
         }
 
         $params = $this->convertStringsToSchema(PKPSchemaService::SCHEMA_DATA_CITATION, $illuminateRequest->input());
-
-        $params['id'] = $dataCitation->getId();
+        $params['id'] = $dataCitation->id;
 
         $errors = Repo::dataCitation()->validate($dataCitation, $params);
-
         if (!empty($errors)) {
             return response()->json($errors, Response::HTTP_BAD_REQUEST);
         }
 
-        Repo::dataCitation()->edit($dataCitation, $params);
-        $dataCitation = Repo::dataCitation()->get($dataCitation->getId());
+        $dataCitation->update($params);
+
+        $dataCitation = DataCitation::find($dataCitation->id);
 
         return response()->json(
             Repo::dataCitation()->getSchemaMap()->map($dataCitation), Response::HTTP_OK
@@ -213,7 +206,7 @@ class PKPDataCitationController extends PKPBaseController
      */
     public function delete(Request $illuminateRequest): JsonResponse
     {
-        $dataCitation = Repo::dataCitation()->get((int)$illuminateRequest->route('dataCitationId'));
+        $dataCitation = DataCitation::find((int) $illuminateRequest->route('dataCitationId'));
 
         if (!$dataCitation) {
             return response()->json([
@@ -221,7 +214,7 @@ class PKPDataCitationController extends PKPBaseController
             ], Response::HTTP_OK);
         }
 
-        Repo::dataCitation()->delete($dataCitation);
+        $dataCitation->delete();
 
         return response()->json(
             Repo::dataCitation()->getSchemaMap()->map($dataCitation), Response::HTTP_OK

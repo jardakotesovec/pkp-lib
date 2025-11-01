@@ -63,8 +63,8 @@ class DataCitation extends Model
      */
     public function save(array $options = [])
     {
-        $isNew = !$this->exists;
 
+        $isNew = !$this->exists;
         $saved = parent::save($options);
 
         if (!$saved) {
@@ -92,5 +92,6 @@ class DataCitation extends Model
     {
         return $builder->where('publication_id', $publicationId);
     }
+
 
 }

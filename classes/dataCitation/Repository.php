@@ -38,42 +38,35 @@ class Repository
     }
 
     /**
-     * Validate properties for a Data Citation
+     * Validate properties for a data citation
      *
-     * Perform validation checks on data used to add or edit a Data Citation.
+     * Perform validation checks on data used to add or edit a data citation.
      *
+     * @param DataCitation|null $dataCitation Data citation being edited. Pass `null` if creating a new citation
      * @param array $props A key/value array with the new data to validate
-     * @param array $allowedLocales The context's supported locales
-     * @param string $primaryLocale The context's primary locale
      *
      * @return array A key/value array with validation errors. Empty if no errors
      *
-     * @hook DataCitation::validate [[&$errors, $object, $props, $allowedLocales, $primaryLocale]]
+     * @hook DataCitation::validate [[&$errors, $dataCitation, $props]]
      */
-    public function validate(?DataCitation $object, array $props, array $allowedLocales, string $primaryLocale): array
+    public function validate(?DataCitation $dataCitation, array $props): array
     {
         $schema = DataCitation::getSchemaName();
 
         $validator = ValidatorFactory::make(
             $props,
-            $this->schemaService->getValidationRules($schema, $allowedLocales),
-            [
-                'dateExpire.date_format' => __('stats.dateRange.invalidDate'),
-            ]
+            $this->schemaService->getValidationRules($schema, [])
         );
 
         // Check required fields
         ValidatorFactory::required(
             $validator,
-            $object,
+            $dataCitation,
             $this->schemaService->getRequiredProps($schema),
             $this->schemaService->getMultilingualProps($schema),
-            $allowedLocales,
-            $primaryLocale
+            [],
+            ''
         );
-
-        // Check for input from disallowed locales
-        ValidatorFactory::allowedLocales($validator, $this->schemaService->getMultilingualProps($schema), $allowedLocales);
 
         $errors = [];
 
@@ -81,7 +74,7 @@ class Repository
             $errors = $this->schemaService->formatValidationErrors($validator->errors());
         }
 
-        Hook::call('DataCitation::validate', [&$errors, $object, $props, $allowedLocales, $primaryLocale]);
+        Hook::call('DataCitation::validate', [&$errors, $dataCitation, $props]);
 
         return $errors;
     }

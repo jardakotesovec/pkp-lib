@@ -143,27 +143,11 @@ class Schema extends \PKP\core\maps\Schema
                     $output[$prop] = Repo::citation()->getRawCitationsByPublicationId($publication->getId())->implode(PHP_EOL);
                     break;
                 case 'dataCitations':
-                    // DATACITATION TODO, WHAT IS THE PROPER ELOQUENT WAY?
-                    $output[$prop] = DataCitation::where('publication_id', $publication->getId())
-                        ->get()
-                        ->map(function (DataCitation $dataCitation) {
-                            return [
-                                'id' => $dataCitation->id,
-                                'publicationId' => $dataCitation->publicationId,
-                                'seq' => $dataCitation->seq,
-                                'title' => $dataCitation->title,
-                                'identifierType' => $dataCitation->identifierType,
-                                'identifier' => $dataCitation->identifier,
-                                'relationshipType' => $dataCitation->relationshipType,
-                                'repository' => $dataCitation->repository,
-                                'year' => $dataCitation->year,
-                                'creators' => $dataCitation->creators,
-                                'url' => $dataCitation->url,
-                            ];
-                        })
-                        ->sortBy('seq')
-                        ->values()
-                        ->all();
+                    $data = [];
+                    foreach ($publication->getData('dataCitations') as $dataCitation) {
+                        $data[] = Repo::dataCitation()->getSchemaMap()->map($dataCitation);
+                    }
+                    $output[$prop] = $data;
                     break;
                 case 'doiObject':
                     if ($publication->getData('doiObject')) {

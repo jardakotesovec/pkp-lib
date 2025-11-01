@@ -175,7 +175,7 @@ abstract class PKPDashboardHandler extends Handler
         $logResponseForm = new LogReviewerResponseForm($context->getSupportedFormLocales(), $context);
         $citationStructuredEditForm = new CitationStructuredEditForm('emit');
         $citationRawEditForm = new CitationRawEditForm('emit');
-        $dataCitationEditForm = new DataCitationEditForm('emit', null);
+        $dataCitationEditForm = new DataCitationEditForm('emit');
 
         $templateMgr->setState([
             'pageInitConfig' => [

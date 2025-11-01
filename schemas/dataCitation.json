@@ -33,14 +33,20 @@
             "origin": "setting",
             "multilingual": false,
             "description": "The identifier type for the dataset.",
-            "apiSummary": true
+            "apiSummary": true,
+            "validation": [
+				"nullable"
+			]
         },
         "identifier": {
             "type": "string",
             "origin": "setting",
             "multilingual": false,
             "description": "The identifier for the dataset.",
-            "apiSummary": true
+            "apiSummary": true,
+            "validation": [
+				"nullable"
+			]
         },
         "relationshipType": {
             "type": "string",
@@ -54,17 +60,24 @@
             "origin": "setting",
             "multilingual": false,
             "description": "The repository where the dataset is stored or the publisher of the dataset.",
-            "apiSummary": true
+            "apiSummary": true,
+            "validation": [
+				"nullable"
+			]
         },
         "year": {
             "type": "string",
             "origin": "setting",
             "multilingual": false,
             "description": "The year the dataset was published.",
-            "apiSummary": true
+            "apiSummary": true,
+            "validation": [
+				"nullable"
+			]
         },
-		"creators": {
+		"authors": {
 			"type": "array",
+            "origin": "setting",
 			"description": "A list of the creators for this dataset.",
 			"multilingual": false,
 			"apiSummary": true,
@@ -74,9 +87,6 @@
 			"items": {
 				"type": "object",
 				"properties": {
-					"displayName": {
-						"type": "string"
-					},
 					"givenName": {
 						"type": "string"
 					},
@@ -94,7 +104,10 @@
             "origin": "setting",
             "multilingual": false,
             "description": "The URL of the dataset.",
-            "apiSummary": true
+            "apiSummary": true,
+            "validation": [
+				"nullable"
+			]
         }
     }
 }

@@ -13,16 +13,16 @@
 
 namespace PKP\dataCitation\maps;
 
-use APP\core\Application;
 use Illuminate\Support\Enumerable;
 use PKP\dataCitation\DataCitation;
-use PKP\core\PKPApplication;
 use PKP\services\PKPSchemaService;
 
 class Schema extends \PKP\core\maps\Schema
 {
+     /** @copydoc \PKP\core\maps\Schema::$collection */
     public Enumerable $collection;
 
+    /** @copydoc \PKP\core\maps\Schema::$schema */
     public string $schema = PKPSchemaService::SCHEMA_DATA_CITATION;
 
     /**
@@ -72,24 +72,42 @@ class Schema extends \PKP\core\maps\Schema
     }
 
     /**
-     * Map schema properties of an Data Citation to an assoc array
+     * Map schema properties of a Data Citation to an assoc array
      */
     protected function mapByProperties(array $props, DataCitation $item): array
     {
+        $authorModel = $this->getDataCitationAuthorDataModel();
         $output = [];
         foreach ($props as $prop) {
             switch ($prop) {
+                case 'authors':
+                    $authors = [];
+                    foreach (is_array($item->getAttribute($prop)) ? $item->getAttribute($prop) : [] as $author) {
+                        $authors[] = array_merge($authorModel, $author);
+                    }
+                    $output[$prop] = $authors;
+                    break;
                 default:
                     $output[$prop] = $item->getAttribute($prop);
                     break;
             }
         }
-
-        $output = $this->schemaService->addMissingMultilingualValues($this->schema, $output, $this->context->getSupportedSubmissionLocales());
-
         ksort($output);
+        return $this->withExtensions($output, $item);
+    }
 
-        return $this->withExtensions($output, $item);        
+    /**
+     * Get author data model as defined in schemas/dataCitation.json.
+     */
+    public function getDataCitationAuthorDataModel(): array
+    {
+        $schemaService = new PKPSchemaService();
+        $schema = $schemaService->get($this->schema);
+        $authorModel = [];
+        foreach (array_keys((array)$schema->properties->authors->items->properties) as $property) {
+            $authorModel[$property] = '';
+        }
+        return $authorModel;
     }
 
 }

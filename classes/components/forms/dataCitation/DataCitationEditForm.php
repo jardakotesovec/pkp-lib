@@ -25,16 +25,14 @@ class DataCitationEditForm extends FormComponent
 {
     public const FORM_DATA_CITATION_EDIT = 'data_citation';
     public $id = self::FORM_DATA_CITATION_EDIT;
-    public $method = 'PUT';
-    public bool $isRequired;
+    public $method = 'POST';
 
     /**
      * Constructor
      *
      * @param string $action URL to submit the form to
      */
-    public function __construct(string $action)
-    {
+    public function __construct(string $action) {
         $this->action = $action;
 
         $types = ['DOI', 'Accession', 'PURL', 'ARK', 'URI', 'ARXIV', 'ECLI', 'Handle', 'ISSN', 'ISBN', 'PMID', 'PMCID', 'UUID'];
@@ -80,7 +78,7 @@ class DataCitationEditForm extends FormComponent
         ]));
 
         $this->addField(new FieldAuthors('authors', [
-            'label' => __('submission.dataCitations.label.authors'),
+            'label' => __('submission.dataCitations.label.creators'),
             'description' => '',
             'value' => null,
         ]));

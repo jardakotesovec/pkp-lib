@@ -692,6 +692,39 @@ msgstr "The following references have been extracted and will be linked to the s
 msgid "submission.parsedAndSaveCitations"
 msgstr "Extract and Save References"
 
+msgid "submission.dataCitations.addModal.title"
+msgstr "Add Data Citation"
+
+msgid "submission.dataCitations.editModal.title"
+msgstr "Edit Data Citation"
+
+msgid "submission.dataCitations.label.title"
+msgstr "Title"
+
+msgid "submission.dataCitations.label.identifierType"
+msgstr "Identifier type"
+
+msgid "submission.dataCitations.label.identifier"
+msgstr "Identifier"
+
+msgid "submission.dataCitations.label.relationshipType"
+msgstr "Relationship type"
+
+msgid "submission.dataCitations.label.repository"
+msgstr "Repository"
+
+msgid "submission.dataCitations.label.year"
+msgstr "Year"
+
+msgid "submission.dataCitations.label.creators"
+msgstr "Creators"
+
+msgid "submission.dataCitations.label.url"
+msgstr "URL"
+
+msgid "submission.dataCitation.emptyCitations"
+msgstr "No data citations have been added."
+
 msgid "submission.comments.addComment"
 msgstr "Add Comment"
 
