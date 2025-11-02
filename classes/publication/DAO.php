@@ -198,8 +198,6 @@ class DAO extends EntityDAO
             $publication->getData('citationsRaw')
         );
 
-        // DATACITATIONS TODO
-
         return $id;
     }
 
@@ -214,8 +212,6 @@ class DAO extends EntityDAO
 
         $this->saveControlledVocab($vocabs, $publication->getId());
         $this->saveCategories($publication);
-
-        // DATACITATIONS TODO
 
         if ($oldPublication) {
             Repo::citation()->importCitations(
@@ -486,7 +482,7 @@ class DAO extends EntityDAO
      */
     protected function deleteDataCitations(int $publicationId)
     {
-        // DATACITATION TODO
+        DataCitation::where('publication_id', $publicationId)->delete();
     }
 
     /**

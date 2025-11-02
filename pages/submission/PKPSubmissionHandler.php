@@ -29,7 +29,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\LazyCollection;
 use PKP\components\forms\FormComponent;
 use PKP\components\forms\publication\PKPCitationsForm;
-use PKP\components\forms\publication\PKPDataCitationsForm;
+use PKP\components\forms\publication\PKPDataAvailabilityAndCitationsForm;
 use PKP\components\forms\publication\TitleAbstractForm;
 use PKP\components\forms\submission\CommentsForTheEditors;
 use PKP\components\forms\submission\ConfirmSubmission;
@@ -765,19 +765,19 @@ abstract class PKPSubmissionHandler extends Handler
 
 
         if (in_array($request->getContext()->getData('dataCitations'), [Context::METADATA_REQUEST, Context::METADATA_REQUIRE])) {
-            $dataCitationsForm = new PKPDataCitationsForm(
+            $dataAvailabilityAndCitationsForm = new PKPDataAvailabilityAndCitationsForm(
                 $publicationApiUrl,
                 $locales,
                 $publication,
                 $request->getContext()->getData('dataCitations') === Context::METADATA_REQUIRE
             );
-            $this->removeButtonFromForm($dataCitationsForm);
+            $this->removeButtonFromForm($dataAvailabilityAndCitationsForm);
             $sections[] = [
-                'id' => $dataCitationsForm->id,
+                'id' => $dataAvailabilityAndCitationsForm->id,
                 'name' => '',
                 'type' => self::SECTION_TYPE_FORM,
                 'description' => '',
-                'form' => $dataCitationsForm->getConfig(),
+                'form' => $dataAvailabilityAndCitationsForm->getConfig(),
             ];
         }
 

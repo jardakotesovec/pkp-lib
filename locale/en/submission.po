@@ -782,6 +782,9 @@ msgstr "Discussion Files"
 msgid "submission.coverage"
 msgstr "Coverage Information"
 
+msgid "submission.dataAvailabilityAndCitation.data"
+msgstr "Data"
+
 msgid "submission.dataCitation.dataCitations"
 msgstr "Data Citations"
 
