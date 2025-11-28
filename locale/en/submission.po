@@ -692,6 +692,15 @@ msgstr "The following references have been extracted and will be linked to the s
 msgid "submission.parsedAndSaveCitations"
 msgstr "Extract and Save References"
 
+msgid "submission.dataCitations"
+msgstr "Data Citations"
+
+msgid "submission.dataCitations.description"
+msgstr "This table allows users to add formal data citations, ensuring datasets are properly credited and appear alongside other references in the publication."
+
+msgid "submission.dataCitations.title"
+msgstr "Title"
+
 msgid "submission.dataCitations.addModal.title"
 msgstr "Add Data Citation"
 
@@ -710,6 +719,18 @@ msgstr "Identifier"
 msgid "submission.dataCitations.label.relationshipType"
 msgstr "Relationship type"
 
+msgid "submission.dataCitations.label.relationshipType.supporting"
+msgstr "Supporting data without specifying whether they were generated or analyzed (supporting)."
+
+msgid "submission.dataCitations.label.relationshipType.generated"
+msgstr "Supporting data that were generated for the study (generated)."
+
+msgid "submission.dataCitations.label.relationshipType.analyzed"
+msgstr "Supporting data that were analyzed but not generated for the study (analyzed)."
+
+msgid "submission.dataCitations.label.relationshipType.non-analyzed"
+msgstr "Referenced data that were neither generated nor analyzed for the study (non-analyzed)."
+
 msgid "submission.dataCitations.label.repository"
 msgstr "Repository"
 
@@ -722,8 +743,11 @@ msgstr "Creators"
 msgid "submission.dataCitations.label.url"
 msgstr "URL"
 
-msgid "submission.dataCitation.emptyCitations"
+msgid "submission.dataCitations.emptyCitations"
 msgstr "No data citations have been added."
+
+msgid "submission.dataCitations.required"
+msgstr "Data citations are required."
 
 msgid "submission.comments.addComment"
 msgstr "Add Comment"
@@ -784,30 +808,6 @@ msgstr "Coverage Information"
 
 msgid "submission.dataAvailabilityAndCitation.data"
 msgstr "Data"
-
-msgid "submission.dataCitation.dataCitations"
-msgstr "Data Citations"
-
-msgid "submission.dataCitation.dataCitations.description"
-msgstr "This table allows users to add formal data citations, ensuring datasets are properly credited and appear alongside other references in the publication."
-
-msgid "submission.dataCitation.add"
-msgstr "Add a new Data Citation"
-
-msgid "submission.dataCitation.edit"
-msgstr "Edit a Data Citation"
-
-msgid "submission.dataCitation.title"
-msgstr "Title"
-
-msgid "submission.dataCitation.title.description"
-msgstr "The title of the Data Citation"
-
-msgid "submission.dataCitation.persistentIdentifier"
-msgstr "Persistent Identifier"
-
-msgid "submission.dataCitation.persistentIdentifier.description"
-msgstr "A persistent identifier for the Data Citation, for example DOI"
 
 msgid "submission.details"
 msgstr "Submission Details"

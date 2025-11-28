@@ -39,7 +39,13 @@ class DataCitationEditForm extends FormComponent
         $identifierTypes = array_map(fn($type) => ['value' => $type, 'label' => $type], $types);
 
         $types = ['supporting', 'generated', 'analyzed', 'non-analyzed'];
-        $relationshipTypes = array_map(fn($type) => ['value' => $type, 'label' => $type], $types);
+        $relationshipTypes = array_map(
+            fn($type) => [
+                'value' => $type,
+                'label' => __('submission.dataCitations.label.relationshipType.' . $type),
+            ],
+            $types
+        );
 
         $this->addField(new FieldText('title', [
             'label' => __('submission.dataCitations.label.title'),

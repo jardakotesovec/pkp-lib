@@ -29,6 +29,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\LazyCollection;
 use PKP\components\forms\FormComponent;
 use PKP\components\forms\publication\PKPCitationsForm;
+use PKP\components\forms\dataCitation\DataCitationEditForm;
 use PKP\components\forms\publication\PKPDataAvailabilityAndCitationsForm;
 use PKP\components\forms\publication\TitleAbstractForm;
 use PKP\components\forms\submission\CommentsForTheEditors;
@@ -761,23 +762,42 @@ abstract class PKPSubmissionHandler extends Handler
             ];
         }
 
-// DATACITATIONS TODO -- Should we check here whether data availability or data citations is enabled and if it is show the form
 
+        $dataAvailabilitySetting = $request->getContext()->getData('dataAvailability');
+        if (in_array($dataAvailabilitySetting, [Context::METADATA_REQUEST, Context::METADATA_REQUIRE])) {
 
-        if (in_array($request->getContext()->getData('dataCitations'), [Context::METADATA_REQUEST, Context::METADATA_REQUIRE])) {
             $dataAvailabilityAndCitationsForm = new PKPDataAvailabilityAndCitationsForm(
                 $publicationApiUrl,
                 $locales,
                 $publication,
-                $request->getContext()->getData('dataCitations') === Context::METADATA_REQUIRE
+                in_array($dataAvailabilitySetting, [Context::METADATA_REQUEST, Context::METADATA_REQUIRE]),
+                $dataAvailabilitySetting === Context::METADATA_REQUIRE
             );
+
             $this->removeButtonFromForm($dataAvailabilityAndCitationsForm);
+
             $sections[] = [
                 'id' => $dataAvailabilityAndCitationsForm->id,
-                'name' => '',
+                'name' => 'Data Availability',
                 'type' => self::SECTION_TYPE_FORM,
                 'description' => '',
                 'form' => $dataAvailabilityAndCitationsForm->getConfig(),
+            ];
+
+        }
+
+        $dataCitationsSetting = $request->getContext()->getData('dataCitations');
+        if (in_array($dataCitationsSetting, [Context::METADATA_REQUEST, Context::METADATA_REQUIRE])) {
+            $dataCitationEditForm = new DataCitationEditForm('emit');
+            $sections[] = [
+                'id' => 'dataCitations',
+                'name' => 'Data Citations',
+                'component' => 'DataCitationManager',
+                'props' => [
+                    'submission' => $submission->getAllData(),
+                    'publication' => $publication->getAllData(),
+                    'dataCitationEditForm' => $dataCitationEditForm->getConfig(),
+                ]
             ];
         }
 
@@ -788,7 +808,10 @@ abstract class PKPSubmissionHandler extends Handler
             'sections' => $sections,
             'reviewTemplate' => '/submission/review-details.tpl',
         ];
+
+
     }
+    
 
     /**
      * Get the state for the For the Editors step

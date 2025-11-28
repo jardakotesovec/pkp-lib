@@ -2209,8 +2209,6 @@ msgstr ""
 "Require the author to suggest coverage metadata before accepting their "
 "submission."
 
-
-
 msgid "manager.setup.metadata.dataCitations"
 msgstr "Data Citations"
 
@@ -2229,8 +2227,6 @@ msgstr "Ask the author for data citation metadata during submission."
 msgid "manager.setup.metadata.dataCitations.require"
 msgstr ""
 "Require the author to add data citation metadata before accepting their submission."
-
-
 
 msgid "manager.setup.metadata.keywords.description"
 msgstr ""

@@ -2063,9 +2063,9 @@ class PKPSubmissionController extends PKPBaseController
 
         $submissionLocale = $submission->getData('locale');
         $locales = $this->getPublicationFormLocales($context, $submission);
-        $supportsDataAvailability = (bool) $context->getData('dataAvailability');
+        $dataAvailabilitySetting = (bool) $context->getData('dataAvailability');
 
-        $dataAvailabilityAndCitationsForm = new PKPDataAvailabilityAndCitationsForm($publicationApiUrl, $locales, $publication, $supportsDataAvailability );
+        $dataAvailabilityAndCitationsForm = new PKPDataAvailabilityAndCitationsForm($publicationApiUrl, $locales, $publication, $dataAvailabilitySetting);
 
         return response()->json($this->getLocalizedForm($dataAvailabilityAndCitationsForm, $submissionLocale, $locales), Response::HTTP_OK);
 

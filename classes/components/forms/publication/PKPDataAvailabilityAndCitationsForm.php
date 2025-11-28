@@ -30,17 +30,18 @@ class PKPDataAvailabilityAndCitationsForm extends FormComponent
      *
      * @param string $action URL to submit the form to
      */
-    public function __construct(string $action, array $locales, Publication $publication, $supportsDataAvailability)
+    public function __construct(string $action, array $locales, Publication $publication, bool $dataAvailabilitySetting, bool $isRequired = false)
     {
         $this->action = $action;
         $this->locales = $locales;
 
-        if ( $supportsDataAvailability ) {
+        if ($dataAvailabilitySetting) {
             $this->addField(new FieldRichTextarea('dataAvailability', [
                 'label' => __('submission.dataAvailability'),
                 'tooltip' => __('manager.setup.metadata.dataAvailability.description'),
                 'isMultilingual' => true,
                 'value' => $publication->getData('dataAvailability'),
+                'isRequired' => $isRequired
             ]));
         }
 
