@@ -54,6 +54,7 @@ abstract class PKPSubmissionHandler extends Handler
 {
     public const SECTION_TYPE_CONFIRM = 'confirm';
     public const SECTION_TYPE_CONTRIBUTORS = 'contributors';
+    public const SECTION_TYPE_DATA_CITATIONS = 'dataCitations';
     public const SECTION_TYPE_REVIEWER_SUGGESTIONS = 'reviewerSuggestions';
     public const SECTION_TYPE_FILES = 'files';
     public const SECTION_TYPE_FORM = 'form';
@@ -232,6 +233,14 @@ abstract class PKPSubmissionHandler extends Handler
         if ($context->getData('reviewerSuggestionEnabled')) {
             $reviewerSuggestionsListPanel = $this->getReviewerSuggestionsListPanel($request, $submission, $publication, $formLocales);
             $components[$reviewerSuggestionsListPanel->id] = $reviewerSuggestionsListPanel->getConfig();
+        }
+
+        $dataCitationsSetting = $context->getData('dataCitations');
+        if (in_array($dataCitationsSetting, [Context::METADATA_REQUEST, Context::METADATA_REQUIRE])) {
+            $dataCitationEditForm = new DataCitationEditForm('emit');
+            $components['dataCitation'] = [
+                'dataCitationEditForm' => $dataCitationEditForm->getConfig(),
+            ];
         }
 
         $userRoles = $this->getAuthorizedContextObject(Application::ASSOC_TYPE_USER_ROLES);
@@ -788,16 +797,11 @@ abstract class PKPSubmissionHandler extends Handler
 
         $dataCitationsSetting = $request->getContext()->getData('dataCitations');
         if (in_array($dataCitationsSetting, [Context::METADATA_REQUEST, Context::METADATA_REQUIRE])) {
-            $dataCitationEditForm = new DataCitationEditForm('emit');
             $sections[] = [
                 'id' => 'dataCitations',
-                'name' => 'Data Citations',
-                'component' => 'DataCitationManager',
-                'props' => [
-                    'submission' => $submission->getAllData(),
-                    'publication' => $publication->getAllData(),
-                    'dataCitationEditForm' => $dataCitationEditForm->getConfig(),
-                ]
+                'name' => __('submission.dataCitations'),
+                'type' => self::SECTION_TYPE_DATA_CITATIONS,
+                'description' => __('submission.dataCitations.description'),
             ];
         }
 
