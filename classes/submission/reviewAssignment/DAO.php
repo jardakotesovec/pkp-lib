@@ -51,7 +51,6 @@ class DAO extends EntityDAO
         'dateAcknowledged' => 'date_acknowledged',
         'dateDue' => 'date_due',
         'dateResponseDue' => 'date_response_due',
-        'doiId' => 'doi_id',
         'lastModified' => 'last_modified',
         'reminderWasAutomatic' => 'reminder_was_automatic',
         'declined' => 'declined',
@@ -162,13 +161,6 @@ class DAO extends EntityDAO
             'reviewerUserName',
             $reviewer->getUserName()
         );
-
-        if (!empty($reviewAssignment->getData('doiId'))) {
-            $reviewAssignment->setData(
-                'doiObject',
-                Repo::doi()->get($reviewAssignment->getData('doiId'))
-            );
-        }
 
         return $reviewAssignment;
     }

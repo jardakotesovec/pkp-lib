@@ -100,6 +100,7 @@ abstract class PKPDoisHandler extends Handler
         $stateComponents = $this->getAppStateComponents($request, $enabledDoiTypes, $commonArgs);
 
         // DOI settings
+        $router = $request->getRouter();
         $dispatcher = $request->getDispatcher();
 
         $contextApiUrl = $dispatcher->url($request, PKPApplication::ROUTE_API, $context->getPath(), 'contexts/' . $context->getId());

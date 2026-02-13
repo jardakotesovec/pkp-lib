@@ -119,7 +119,7 @@ class PeerReviewController extends PKPBaseController
         }
 
         return response()->json(
-            Repo::publication()->getPublicPeerReviews($publications->all()),
+            Repo::publication()->getPeerReviews($publications->all()),
             Response::HTTP_OK
         );
     }
@@ -139,7 +139,7 @@ class PeerReviewController extends PKPBaseController
         }
 
         return response()->json(
-            Repo::publication()->getPublicPeerReviews([$publication])->first(),
+            Repo::publication()->getPeerReviews([$publication])->first(),
             Response::HTTP_OK
         );
     }
