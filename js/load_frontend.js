@@ -78,6 +78,9 @@ import PkpScrollToCommentsLogInto from '@/frontend/components/PkpComments/PkpScr
 import PkpCommentReportDialogAuthor from '@/frontend/components/PkpComments/PkpCommentReportDialogAuthor.vue';
 import PkpCommentReportDialogReasonInput from '@/frontend/components/PkpComments/PkpCommentReportDialogReasonInput.vue';
 
+// Reka Popover
+import { PopoverAnchor, PopoverArrow, PopoverClose, PopoverContent, PopoverPortal, PopoverRoot, PopoverTrigger } from 'reka-ui'
+
 // Helper for initializing and tracking Vue controllers
 import VueRegistry from './classes/VueRegistry.js';
 
@@ -153,6 +156,15 @@ VueRegistry.registerComponent(
 	PkpCommentReportDialogReasonInput,
 );
 VueRegistry.registerComponent('PkpCommentsShowMore', PkpCommentsShowMore);
+
+// Register Reka UI components
+VueRegistry.registerComponent('PopoverAnchor', PopoverAnchor);
+VueRegistry.registerComponent('PopoverArrow', PopoverArrow);
+VueRegistry.registerComponent('PopoverClose', PopoverClose);
+VueRegistry.registerComponent('PopoverContent', PopoverContent);
+VueRegistry.registerComponent('PopoverPortal', PopoverPortal);
+VueRegistry.registerComponent('PopoverRoot', PopoverRoot);
+VueRegistry.registerComponent('PopoverTrigger', PopoverTrigger);
 
 const pinia = createPinia();
 
