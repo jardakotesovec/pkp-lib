@@ -79,7 +79,24 @@ import PkpCommentReportDialogAuthor from '@/frontend/components/PkpComments/PkpC
 import PkpCommentReportDialogReasonInput from '@/frontend/components/PkpComments/PkpCommentReportDialogReasonInput.vue';
 
 // Reka Popover
-import { PopoverAnchor, PopoverArrow, PopoverClose, PopoverContent, PopoverPortal, PopoverRoot, PopoverTrigger } from 'reka-ui'
+import {
+	PopoverAnchor,
+	PopoverArrow,
+	PopoverClose,
+	PopoverContent,
+	PopoverPortal,
+	PopoverRoot,
+	PopoverTrigger,
+	NavigationMenuContent,
+	NavigationMenuIndicator,
+	NavigationMenuItem,
+	NavigationMenuLink,
+	NavigationMenuList,
+	NavigationMenuRoot,
+	NavigationMenuSub,
+	NavigationMenuTrigger,
+	NavigationMenuViewport,
+} from 'reka-ui'
 
 // Helper for initializing and tracking Vue controllers
 import VueRegistry from './classes/VueRegistry.js';
@@ -165,6 +182,15 @@ VueRegistry.registerComponent('PopoverContent', PopoverContent);
 VueRegistry.registerComponent('PopoverPortal', PopoverPortal);
 VueRegistry.registerComponent('PopoverRoot', PopoverRoot);
 VueRegistry.registerComponent('PopoverTrigger', PopoverTrigger);
+VueRegistry.registerComponent('NavigationMenuContent', NavigationMenuContent);
+VueRegistry.registerComponent('NavigationMenuIndicator', NavigationMenuIndicator);
+VueRegistry.registerComponent('NavigationMenuItem', NavigationMenuItem);
+VueRegistry.registerComponent('NavigationMenuLink', NavigationMenuLink);
+VueRegistry.registerComponent('NavigationMenuList', NavigationMenuList);
+VueRegistry.registerComponent('NavigationMenuRoot', NavigationMenuRoot);
+VueRegistry.registerComponent('NavigationMenuSub', NavigationMenuSub);
+VueRegistry.registerComponent('NavigationMenuTrigger', NavigationMenuTrigger);
+VueRegistry.registerComponent('NavigationMenuViewport', NavigationMenuViewport);
 
 const pinia = createPinia();
 
