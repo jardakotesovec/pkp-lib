@@ -92,7 +92,7 @@ abstract class ThemePlugin extends LazyLoadPlugin
      *
      * @var ThemePlugin $parent
      */
-    public bool $isVueRuntimeRequired = false;
+    protected bool $_isVueRuntimeRequired = false;
 
     /**
      * @copydoc Plugin::register
@@ -160,7 +160,7 @@ abstract class ThemePlugin extends LazyLoadPlugin
 
         $this->_registerTemplates();
 
-        if ($this->isVueRuntimeRequired) {
+        if ($this->isVueRuntimeRequired()) {
 
             $request = Application::get()->getRequest();
             $templateManager = TemplateManager::getManager($request);
@@ -1071,6 +1071,20 @@ abstract class ThemePlugin extends LazyLoadPlugin
      */
     protected function requiresVueRuntime()
     {
-        $this->isVueRuntimeRequired = true;
+        $this->_isVueRuntimeRequired = true;
+    }
+
+    /**
+     * Check if this theme or any parent them requires the Vue runtime
+     */
+    public function isVueRuntimeRequired() : bool
+    {
+        if ($this->_isVueRuntimeRequired) {
+            return $this->_isVueRuntimeRequired;
+        }
+        if ($this->parent) {
+            return $this->parent->isVueRuntimeRequired();
+        }
+        return false;
     }
 }
