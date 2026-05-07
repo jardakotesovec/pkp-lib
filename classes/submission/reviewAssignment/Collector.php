@@ -22,6 +22,7 @@ use Illuminate\Support\LazyCollection;
 use PKP\core\Core;
 use PKP\core\interfaces\CollectorInterface;
 use PKP\submission\PKPSubmission;
+use PKP\submission\reviewRound\ReviewRound;
 use PKP\submission\ViewsCount;
 
 /**
@@ -341,6 +342,43 @@ class Collector implements CollectorInterface, ViewsCount
     }
 
     /**
+     * Builds a correlated subquery that matches when the assignment's review round
+     * has NOT been closed by an editor decision (i.e. status is not ACCEPTED, DECLINED,
+     * or SENT_TO_EXTERNAL). Used as the "round still alive" predicate for active
+     * reviewer-dashboard views, replacing the older s.stage_id = ra.stage_id proxy.
+     */
+    private function roundNotTerminalSubquery(): \Closure
+    {
+        return fn (Builder $sub) => $sub
+            ->select(DB::raw(1))
+            ->from('review_rounds AS rr')
+            ->whereColumn('rr.review_round_id', 'ra.review_round_id')
+            ->whereNotIn('rr.status', [
+                ReviewRound::REVIEW_ROUND_STATUS_SENT_TO_EXTERNAL,
+                ReviewRound::REVIEW_ROUND_STATUS_ACCEPTED,
+                ReviewRound::REVIEW_ROUND_STATUS_DECLINED,
+            ]);
+    }
+
+    /**
+     * Builds a correlated subquery that matches when the assignment's review round
+     * has been terminally closed by an editor decision. Used as the "round closed"
+     * predicate for the archived view.
+     */
+    private function roundTerminalSubquery(): \Closure
+    {
+        return fn (Builder $sub) => $sub
+            ->select(DB::raw(1))
+            ->from('review_rounds AS rr')
+            ->whereColumn('rr.review_round_id', 'ra.review_round_id')
+            ->whereIn('rr.status', [
+                ReviewRound::REVIEW_ROUND_STATUS_ACCEPTED,
+                ReviewRound::REVIEW_ROUND_STATUS_DECLINED,
+                ReviewRound::REVIEW_ROUND_STATUS_SENT_TO_EXTERNAL,
+            ]);
+    }
+
+    /**
      * @copydoc CollectorInterface::getQueryBuilder()
      */
     public function getQueryBuilder(): Builder
@@ -407,13 +445,7 @@ class Collector implements CollectorInterface, ViewsCount
                                 ->whereNull('ra.date_completed')
                                 ->where('ra.declined', '<>', 1)
                                 ->where('ra.cancelled', '<>', 1)
-                                ->whereIn(
-                                    'ra.submission_id',
-                                    fn (Builder $q) => $q
-                                        ->select('s.submission_id')
-                                        ->from('submissions AS s')
-                                        ->whereColumn('s.stage_id', '=', 'ra.stage_id')
-                                )
+                                ->whereExists($this->roundNotTerminalSubquery())
                         )
                 );
         });
@@ -423,28 +455,27 @@ class Collector implements CollectorInterface, ViewsCount
             fn (Builder $q) => $q
                 ->where('ra.declined', '<>', 1)
                 ->where('ra.cancelled', '<>', 1)
-                ->whereIn(
-                    'ra.submission_id',
+                ->when(
+                    $this->actionRequiredByReviewer,
                     fn (Builder $q) => $q
-                        ->select('s.submission_id')
-                        ->from('submissions AS s')
-                        ->whereColumn('s.submission_id', 'ra.submission_id')
-                        ->when(
-                            $this->actionRequiredByReviewer,
+                        ->whereExists($this->roundNotTerminalSubquery())
+                        ->whereNull('ra.date_completed')
+                )
+                ->when(
+                    $this->isActive,
+                    fn (Builder $q) => $q
+                        ->where(
                             fn (Builder $q) => $q
-                                ->whereColumn('s.stage_id', 'ra.stage_id')
-                                ->whereNull('ra.date_completed')
-                        )
-                        ->when(
-                            $this->isActive,
-                            fn (Builder $q) => $q
-                                ->where(
+                                ->whereExists($this->roundNotTerminalSubquery())
+                                ->orWhere(
                                     fn (Builder $q) => $q
-                                        ->whereColumn('s.stage_id', 'ra.stage_id')
-                                        ->orWhere(
-                                            fn (Builder $q) => $q
+                                        ->whereNotNull('ra.date_completed')
+                                        ->whereExists(
+                                            fn (Builder $sub) => $sub
+                                                ->select(DB::raw(1))
+                                                ->from('submissions AS s')
+                                                ->whereColumn('s.submission_id', 'ra.submission_id')
                                                 ->where('s.status', '<>', PKPSubmission::STATUS_PUBLISHED)
-                                                ->whereNotNull('ra.date_completed')
                                         )
                                 )
                         )
@@ -487,14 +518,7 @@ class Collector implements CollectorInterface, ViewsCount
             fn (Builder $q) => $q->where(
                 fn (Builder $q) => $q
                     ->whereNull('ra.date_completed')
-                    ->whereIn(
-                        'ra.submission_id',
-                        fn (Builder $q) => $q
-                            ->select('s.submission_id')
-                            ->from('submissions AS s')
-                            ->whereColumn('s.submission_id', 'ra.submission_id')
-                            ->whereIn('s.stage_id', [WORKFLOW_STAGE_ID_EDITING, WORKFLOW_STAGE_ID_PRODUCTION])
-                    )
+                    ->whereExists($this->roundTerminalSubquery())
             )
         );
 

@@ -480,6 +480,7 @@ abstract class Repository
     {
         switch ($decision->getData('decision')) {
             case Decision::ACCEPT:
+            case Decision::CONTINUE_TO_COPYEDITING:
                 return [
                     Notification::NOTIFICATION_TYPE_ASSIGN_COPYEDITOR,
                     Notification::NOTIFICATION_TYPE_AWAITING_COPYEDITS

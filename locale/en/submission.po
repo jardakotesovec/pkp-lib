@@ -1703,6 +1703,21 @@ msgstr "The submission, {$title}, has been accepted for publication and sent to 
 msgid "editor.submission.decision.accept.notifyAuthorsDescription"
 msgstr "Send an email to the authors to let them know that their submission has been accepted for publication. This email will not be sent until the decision has been recorded."
 
+msgid "editor.submission.decision.continueToCopyediting"
+msgstr "Continue to Copyediting"
+
+msgid "editor.submission.decision.continueToCopyediting.description"
+msgstr "This submission will be moved to the copyediting stage while the current review round remains open. Reviewers can continue to act on their assignments."
+
+msgid "editor.submission.decision.continueToCopyediting.log"
+msgstr "{$editorName} moved this submission to the copyediting stage while keeping the review round open."
+
+msgid "editor.submission.decision.continueToCopyediting.completed"
+msgstr "Submission Moved to Copyediting"
+
+msgid "editor.submission.decision.continueToCopyediting.completedDescription"
+msgstr "The submission, {$title}, has been moved to the copyediting stage. The review round remains open and reviewers retain access to their assignments."
+
 msgid "editor.submission.decision.cancelReviewRound.notifyAuthorsDescription"
 msgstr "Send an email to the authors to let them know that the round of review has been closed. This email will not be sent until the decision has been recorded."
 

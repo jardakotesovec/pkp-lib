@@ -247,6 +247,7 @@ abstract class PKPDashboardHandler extends Handler
             'SUBMISSION_REVIEW_METHOD_OPEN' => ReviewAssignment::SUBMISSION_REVIEW_METHOD_OPEN,
 
             'DECISION_ACCEPT' => Decision::ACCEPT,
+            'DECISION_CONTINUE_TO_COPYEDITING' => Decision::CONTINUE_TO_COPYEDITING,
             'DECISION_DECLINE' => Decision::DECLINE,
             'DECISION_REVERT_DECLINE' => Decision::REVERT_DECLINE,
             'DECISION_CANCEL_REVIEW_ROUND' => Decision::CANCEL_REVIEW_ROUND,

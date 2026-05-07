@@ -278,6 +278,12 @@
 				"max:5"
 			]
 		},
+		"reviewRoundStatus": {
+			"type": "integer",
+			"description": "The status of the review round this assignment belongs to. One of the `REVIEW_ROUND_STATUS_` constants on ReviewRound. Used by clients to distinguish in-flight rounds from terminally closed ones (ACCEPTED / DECLINED / SENT_TO_EXTERNAL) when rendering reviewer-facing actions.",
+			"apiSummary": true,
+			"writeDisabledInApi": true
+		},
 		"submissionLocale": {
 			"type": "string",
 			"description": "The locale of the submission associated with the assignment",
