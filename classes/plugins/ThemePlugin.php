@@ -762,6 +762,20 @@ abstract class ThemePlugin extends LazyLoadPlugin
     }
 
     /**
+     * Get the root theme
+     *
+     * Gets the parent theme or any ancestor theme until
+     * it finds the root theme in the stack of child themes.
+     */
+    public function getRootTheme(): ThemePlugin
+    {
+        if (!isset($this->parent)) {
+            return $this;
+        }
+        return $this->parent->getRootTheme();
+    }
+
+    /**
      * Register directories to search for template files
      *
      */
