@@ -48,7 +48,7 @@ class ViewHelper
      * @param string $configKey The configuration key for allowed HTML tags
      * @return string The sanitized HTML
      */
-    public static function sanitizeHtml(string $input, string $configKey = 'allowed_html'): string
+    public static function sanitizeHtml(?string $input, string $configKey = 'allowed_html'): string
     {
         $result = PKPString::stripUnsafeHtml($input, $configKey);
         return self::escapeVueDelimiters($result);
