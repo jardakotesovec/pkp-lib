@@ -131,6 +131,12 @@ class MetadataBlocksRegistry
         );
         $this->register(
             new MetadataBlock(
+                component: 'metadata.date-submitted',
+                title: __('submission.dateSubmitted'),
+            )
+        );
+        $this->register(
+            new MetadataBlock(
                 component: 'metadata.cover-image',
                 title: __('category.coverImage'),
             )

@@ -1,0 +1,8 @@
+@if ($submission->getData('dateSubmitted'))
+    <x-metadata.default
+        slug="date-submitted"
+        title="{{ __('common.dateSubmitted') }}"
+    >
+        {{ ViewHelper::dateFormat($submission->getData('dateSubmitted'), $dateFormatLong) }}
+    </x-metadata.default>
+@endif
