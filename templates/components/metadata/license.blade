@@ -1,0 +1,34 @@
+@if ($currentContext->getLocalizedData('licenseTerms') || $publication->getData('licenseUrl'))
+    <x-metadata.default
+        slug="license"
+        title="{{ __('submission.license') }}"
+    >
+        @if ($publication->getData('licenseUrl'))
+            @php
+                $statement = __('submission.copyrightStatement', [
+                    'copyrightHolder' => $publication->getLocalizedData('copyrightHolder'),
+                    'copyrightYear' => $publication->getData('copyrightYear'),
+                ]);
+            @endphp
+            @if ($ccLicenseBadge)
+                @if ($publication->getLocalizedData('copyrightHolder'))
+                    <div>{{ $statement }}</div>
+                @endif
+                <div>
+                    {!! $ccLicenseBadge !!}
+                </div>
+            @else
+                <div>
+                    <a href="{{ $publication->getData('licenseUrl') }}">
+                        @if ($publication->getLocalizedData('copyrightHolder'))
+                            {{ $statement }}
+                        @else
+                            {{ __('submission.license') }}
+                        @endif
+                    </a>
+                </div>
+            @endif
+        @endif
+        {!! $currentContext->getLocalizedData('licenseTerms') !!}
+    </x-metadata.default>
+@endif

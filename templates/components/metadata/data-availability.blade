@@ -1,0 +1,8 @@
+@if ($publication->getData('dataAvailability'))
+    <x-metadata.default
+        slug="data-availability"
+        title="{{ __('submission.dataAvailability') }}"
+    >
+        {!! ViewHelper::sanitizeHtml($publication->getLocalizedData('dataAvailability')) !!}
+    </x-metadata.default>
+@endif

@@ -30,6 +30,7 @@ use APP\file\PublicFileManager;
 use APP\publication\Publication;
 use APP\submission\Submission;
 use APP\template\TemplateManager;
+use APP\view\MetadataBlocksRegistry;
 use Exception;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
@@ -68,7 +69,6 @@ use PKP\submission\GenreDAO;
 use PKP\submission\PKPSubmission;
 use PKP\submissionFile\SubmissionFile;
 use PKP\userGroup\UserGroup;
-use PKP\view\MetadataBlocksRegistry;
 use Smarty;
 use Smarty_Internal_Template;
 

@@ -1,0 +1,12 @@
+@if ($categories)
+    <x-metadata.default
+        slug="categories"
+        title="{{ __('category.category') }}"
+    >
+        @foreach ($categories as $category)
+            <a href="@url(['catalog', 'category', $category->getPath()])">
+                {{ $category->getLocalizedTitle() }}
+            </a>@if(!$loop->last){{ __('common.commaListSeparator') }}@endif
+        @endforeach
+    </x-metadata.default>
+@endif

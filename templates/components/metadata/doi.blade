@@ -1,0 +1,13 @@
+@if ($doiObject)
+    @php
+        $doiUrl = $doiObject->getData('resolvingUrl');
+    @endphp
+    <x-metadata.default
+        slug="doi"
+        title="{{ __('doi.readerDisplayName') }}"
+    >
+        <a href="{{ $doiUrl }}">
+            {{ $doiUrl }}
+        </a>
+    </x-metadata.default>
+@endif

@@ -78,6 +78,7 @@ class MetadataBlocksRegistry
     protected function registerAll(): void
     {
         $this->registerDefaultBlocks();
+        $this->registerPubIdBlocks();
 
         $plugins = PluginRegistry::getAllPlugins();
         foreach ($plugins as $plugin) {
@@ -104,18 +105,6 @@ class MetadataBlocksRegistry
         $this->hasRegistered = true;
     }
 
-    protected function registerDefaultBlocks(): void
-    {
-        $this->register(
-            new MetadataBlock(
-                id: 'keywords',
-                title: 'Keywords',
-                description: 'Example keywords description',
-                component: 'metadata.keywords',
-            )
-        );
-    }
-
     protected function registerThemeBlocks(ThemePlugin $theme): void
     {
         if ($theme->parent) {
@@ -123,6 +112,67 @@ class MetadataBlocksRegistry
         }
         if ($theme instanceOf HasMetadataBlocks) {
             $theme->registerMetadataBlocks($this);
+        }
+    }
+
+    protected function registerDefaultBlocks(): void
+    {
+        $this->register(
+            new MetadataBlock(
+                component: 'metadata.cover-image',
+                title: __('category.coverImage'),
+            )
+        );
+        $this->register(
+            new MetadataBlock(
+                component: 'metadata.doi',
+                title: __('doi.readerDisplayName'),
+            )
+        );
+        $this->register(
+            new MetadataBlock(
+                component: 'metadata.keywords',
+                title: __('common.keywords'),
+            )
+        );
+        $this->register(
+            new MetadataBlock(
+                component: 'metadata.categories',
+                title: __('category.category'),
+            )
+        );
+        $this->register(
+            new MetadataBlock(
+                component: 'metadata.data-availability',
+                title: __('submission.dataAvailability'),
+            )
+        );
+        $this->register(
+            new MetadataBlock(
+                component: 'metadata.funding-statement',
+                title: __('submission.fundingStatement'),
+            )
+        );
+        $this->register(
+            new MetadataBlock(
+                component: 'metadata.license',
+                title: __('submission.fundingStatement'),
+            )
+        );
+    }
+
+    protected function registerPubIdBlocks(): void
+    {
+        $plugins = PluginRegistry::loadCategory('pubIds', true);
+
+        foreach ($plugins as $plugin) {
+            $this->register(
+                new MetadataBlock(
+                    id: $plugin->getPubIdType(),
+                    component: 'metadata.pubid',
+                    title: $plugin->getPubIdDisplayType(),
+                )
+            );
         }
     }
 }

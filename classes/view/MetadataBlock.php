@@ -13,21 +13,6 @@ class MetadataBlock
 {
     public function __construct(
         /**
-         * A unique id for this block
-         */
-        public string $id,
-
-        /**
-         * A human-facing title for this block
-         */
-        public string $title,
-
-        /**
-         * A human-facing description of this block
-         */
-        public string $description,
-
-        /**
          * The component template path
          *
          * For example, a value of `metadata.keywords` will look for a
@@ -45,6 +30,22 @@ class MetadataBlock
          * @see https://laravel.com/docs/11.x/blade#anonymous-components
          */
         public string $component,
+
+        /**
+         * A human-facing title for this block
+         */
+        public string $title,
+
+        /**
+         * An optional id
+         *
+         * Use this if multiple metadata blocks will use
+         * the same component.
+         *
+         * If no id is provided, the component template
+         * will be used as the id.
+         */
+        public string $id = '',
 
         /**
          * An optional callback function to load data for this block.
@@ -70,6 +71,8 @@ class MetadataBlock
          */
         public ?Closure $loader = null,
     ) {
-        //
+        if (!$this->id) {
+            $this->id = $component;
+        }
     }
 }
