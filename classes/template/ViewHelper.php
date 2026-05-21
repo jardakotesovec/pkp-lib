@@ -28,6 +28,20 @@ class ViewHelper
         return PKPTemplateManager::getManager()->smartyUrl($parameters);
     }
 
+    public static function urlArray(array $parameters): string
+    {
+        $page = $parameters[0] ?? '';
+        $op = $parameters[1] ?? '';
+        $path = $parameters[2] ?? '';
+        $anchor = $parameters[3] ?? '';
+        return PKPTemplateManager::getManager()->smartyUrl([
+            'page' => $page,
+            'op' => $op,
+            'path' => $path,
+            'anchor' => $anchor,
+        ]);
+    }
+
     /**
      * Format a date with locale-aware formatting
      * Delegates to PKPTemplateManager::smartyDateFormat() for consistency
