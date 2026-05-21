@@ -1,0 +1,43 @@
+<x-metadata.default
+    slug="version"
+    title="{{ __('admin.version') }}"
+>
+    <span>
+        {{ $publication->getData('versionString') }}
+    </span>
+
+    @if (count($submission->getPublishedPublications()))
+        <x-dropdown>
+            <x-slot:trigger
+                class="metadata-version-dropdown"
+                triggerClass="metadata-version-dropdown-trigger"
+            >
+                {{ __('admin.versionHistory') }}
+            </x-slot:trigger>
+            <ul class="metadata-versions-list">
+                @foreach (array_reverse($submission->getPublishedPublications()) as $version)
+                    @php
+                        $name = $version->getData('versionString');
+                        $urlPath = [$submission->getBestId()];
+                        if ($version->getId() !== $currentPublication->getId()) {
+                            $urlPath[] = 'version';
+                            $urlPath[] = $version->getId();
+                        }
+                    @endphp
+                    <li>
+                        @if ($version->getId() === $publication->getId())
+                            {{ $name }}
+                        @else
+                            <a
+                                class="metadata-version"
+                                href="@url(['article', 'view', $urlPath])"
+                            >
+                                {{ $name }}
+                            </a>
+                        @endif
+                    </li>
+                @endforeach
+            </ul>
+        </x-dropdown>
+    @endif
+</x-metadata.default>

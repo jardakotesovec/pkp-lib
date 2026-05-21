@@ -119,6 +119,18 @@ class MetadataBlocksRegistry
     {
         $this->register(
             new MetadataBlock(
+                component: 'metadata.date-published',
+                title: __('submissions.published'),
+            )
+        );
+        $this->register(
+            new MetadataBlock(
+                component: 'metadata.version',
+                title: __('submission.versions'),
+            )
+        );
+        $this->register(
+            new MetadataBlock(
                 component: 'metadata.cover-image',
                 title: __('category.coverImage'),
             )
