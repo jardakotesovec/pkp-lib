@@ -68,6 +68,7 @@ use PKP\submission\GenreDAO;
 use PKP\submission\PKPSubmission;
 use PKP\submissionFile\SubmissionFile;
 use PKP\userGroup\UserGroup;
+use PKP\view\MetadataBlocksRegistry;
 use Smarty;
 use Smarty_Internal_Template;
 
@@ -140,6 +141,9 @@ class PKPTemplateManager extends Smarty
     /** @var bool Track whether vue runtime is included */
     private bool $isVueRuntimeIncluded = false;
 
+    /** @var MetadataBlocksRegistry Register and load metadata blocks for the reader facing UI */
+    public MetadataBlocksRegistry $metadataBlocks;
+
     /**
      * Constructor.
      * Initialize template engine and assign basic template variables.
@@ -174,6 +178,8 @@ class PKPTemplateManager extends Smarty
         // This routes {include} directives through Laravel's FileViewFinder
         // for unified template resolution and hook firing
         $this->template_class = \PKP\core\blade\SmartyTemplate::class;
+
+        $this->metadataBlocks = new MetadataBlocksRegistry();
     }
 
     /**
@@ -257,17 +263,7 @@ class PKPTemplateManager extends Smarty
                 ['contexts' => ['frontend', 'backend']]
             );
 
-            $activeTheme = null;
-            $contextOrSite = $currentContext ? $currentContext : $request->getSite();
-            $allThemes = PluginRegistry::getPlugins('themes');
-            foreach ($allThemes as $theme) { /** @var \PKP\plugins\Plugin|\PKP\plugins\ThemePlugin $theme */
-                if ($contextOrSite->getData('themePluginPath') === $theme->getDirName()) {
-                    $activeTheme = $theme;
-                    break;
-                }
-            }
-
-            $this->assign(['activeTheme' => $activeTheme]);
+            $this->assign(['activeTheme' => $this->getActiveTheme($request, $currentContext)]);
         }
 
         if ($router instanceof \PKP\core\PKPPageRouter) {
@@ -2869,5 +2865,23 @@ class PKPTemplateManager extends Smarty
     public function getHeaders(): array
     {
         return $this->headers;
+    }
+
+    /**
+     * Get the active theme for a context or site
+     */
+    public function getActiveTheme(Request $request, ?Context $context = null): ?ThemePlugin
+    {
+        $activeTheme = null;
+        $contextOrSite = $context ? $context : $request->getSite();
+        $allThemes = PluginRegistry::getPlugins('themes');
+        foreach ($allThemes as $theme) { /** @var \PKP\plugins\Plugin|\PKP\plugins\ThemePlugin $theme */
+            if ($contextOrSite->getData('themePluginPath') === $theme->getDirName()) {
+                $activeTheme = $theme;
+                break;
+            }
+        }
+
+        return $activeTheme;
     }
 }
