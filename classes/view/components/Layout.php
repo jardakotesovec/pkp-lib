@@ -1,19 +1,19 @@
 <?php
+
 namespace PKP\view\components;
 
 use APP\core\Application;
 use APP\core\Request;
 use APP\template\TemplateManager;
 use Closure;
-use Illuminate\View\Component;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\View as ViewFacade;
+use Illuminate\View\Component;
 use PKP\facades\Locale;
 use PKP\i18n\LocaleMetadata;
 use PKP\plugins\ThemePlugin;
 
-abstract class PKPLayout extends Component
+abstract class Layout extends Component
 {
     public Request $request;
     public ThemePlugin $theme;
@@ -32,12 +32,7 @@ abstract class PKPLayout extends Component
 
     public function render(): View|Closure|string
     {
-        return view(
-            ViewFacade::resolvePluginComponentViewPath(
-                $this,
-                'components.layout'
-            )
-        );
+        return view('components.layout');
     }
 
     /**
@@ -48,6 +43,7 @@ abstract class PKPLayout extends Component
         view()->share('contextName', $this->contextName());
         view()->share('locales', $this->getLocales());
         view()->share('pageTitle', $this->getPageTitle());
+        view()->share('bodyClasses', $this->bodyClasses());
 
         if ($this->isPublicationPage()) {
             view()->share('metadata', [$this, 'getMetadataBlocks']);
@@ -58,7 +54,7 @@ abstract class PKPLayout extends Component
      * Get the name of the context or site, depending
      * on what kind of page we're viewing.
      */
-    public function contextName() : string
+    public function contextName(): string
     {
         $context = $this->request->getContext();
         return $context
@@ -70,7 +66,7 @@ abstract class PKPLayout extends Component
      * Get the <title> by combining the current page title
      * with the context or site name.
      */
-    public function getPageTitle() : string
+    public function getPageTitle(): string
     {
         $page = $this->request->getRequestedPage();
 
@@ -127,7 +123,7 @@ abstract class PKPLayout extends Component
      * Are we currently viewing the article, book or
      * preprint landing page?
      */
-    abstract public function isPublicationPage() : bool;
+    abstract public function isPublicationPage(): bool;
 
     /**
      * Load the article metadata
