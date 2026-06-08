@@ -1396,6 +1396,12 @@ class PKPTemplateManager extends Smarty
      */
     public function fetch($template = null, $cache_id = null, $compile_id = null, $parent = null)
     {
+        // Normalize Smarty paths to Laravel view names so hook consumers
+        // receive the canonical dotted view name
+        if (is_string($template)) {
+            $template = $this->smartyPathToViewName($template);
+        }
+
         // Give hooks an opportunity to override
         $result = null;
         if (Hook::call('TemplateManager::fetch', [$this, $template, $cache_id, $compile_id, &$result])) {
@@ -1410,10 +1416,9 @@ class PKPTemplateManager extends Smarty
             return $template->render();
         }
 
-        // Convert Smarty path to Laravel view name and render through Laravel
+        // Render through Laravel using the normalized view name.
         // View::resolveName hook is fired in Factory::make() for plugin overrides
-        $viewName = $this->smartyPathToViewName($template);
-        return view($viewName)->render();
+        return view($template)->render();
     }
 
     /**
@@ -1693,6 +1698,13 @@ class PKPTemplateManager extends Smarty
         // the opportunity to modify behavior; otherwise, display
         // the template as usual.
         $output = null;
+
+        // Normalize Smarty paths to Laravel view names so hook consumers
+        // receive the canonical dotted view name. 
+        if (is_string($template)) {
+            $template = $this->smartyPathToViewName($template);
+        }
+
         if (Hook::call('TemplateManager::display', [$this, &$template, &$output])) {
             echo $output;
             return;
