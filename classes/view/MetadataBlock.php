@@ -11,6 +11,8 @@ use Closure;
  */
 class MetadataBlock
 {
+    protected $_loaded = false;
+
     public function __construct(
         /**
          * The component template path
@@ -74,5 +76,22 @@ class MetadataBlock
         if (!$this->id) {
             $this->id = $component;
         }
+    }
+
+    /**
+     * This function should be called whenever the `$loader`
+     * callback is run to avoid loading data twice.
+     */
+    public function loaded(): void
+    {
+        $this->_loaded = true;
+    }
+
+    /**
+     * Check if the `$loader` function has already been called.
+     */
+    public function isLoaded(): bool
+    {
+        return $this->_loaded;
     }
 }

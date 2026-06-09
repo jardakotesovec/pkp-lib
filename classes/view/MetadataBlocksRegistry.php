@@ -60,15 +60,28 @@ class MetadataBlocksRegistry
         return $this->_blocks;
     }
 
-    public function load(): Collection
+    /**
+     * @param ?array $blockIds An array of block ids. If passed, it will
+     * only load those blocks and will pass them back in the order specified
+     * in the array.
+     */
+    public function load(?array $blockIds = null): Collection
     {
         $blocks = $this->get();
+        if (!is_null($blockIds)) {
+            $blocks = $blocks
+                ->filter(fn(MetadataBlock $block) => in_array($block->id, $blockIds))
+                ->sort(function(MetadataBlock $a, MetadataBlock $b) use ($blockIds) {
+                    return array_search($a->id, $blockIds) - array_search($b->id, $blockIds);
+                });
+        }
         $templateMgr = TemplateManager::getManager(Application::get()->getRequest());
         $blocks->each(function(MetadataBlock $block) use ($templateMgr) {
-            if (isset($block?->loader)) {
+            if (isset($block?->loader) && !$block->isLoaded()) {
                 $publication = $templateMgr->getTemplateVars('publication');
                 $submission = $templateMgr->getTemplateVars('article');
                 call_user_func($block->loader, $publication, $submission);
+                $block->loaded();
             }
         });
 
@@ -132,7 +145,7 @@ class MetadataBlocksRegistry
         $this->register(
             new MetadataBlock(
                 component: 'metadata.date-submitted',
-                title: __('submission.dateSubmitted'),
+                title: __('common.dateSubmitted'),
             )
         );
         $this->register(

@@ -131,10 +131,15 @@ abstract class Layout extends Component
     abstract public function isPublicationPage() : bool;
 
     /**
-     * Load the article metadata
+     * Get the article metadata blocks
+     *
+     *
+     * @param ?array $blockIds An array of block ids. If passed, it will
+     * only load those blocks and will pass them back in the order specified
+     * in the array.
      */
-    public function getMetadataBlocks(): Collection
+    public function getMetadataBlocks(?array $blockIds = null): Collection
     {
-        return $this->templateMgr->metadataBlocks->load();
+        return $this->templateMgr->metadataBlocks->load($blockIds);
     }
 }
