@@ -2,6 +2,7 @@
     <x-metadata.default
         slug="keywords"
         title="{{ __('article.subject') }}"
+        :$headingTag
     >
         @foreach ($publication->getLocalizedData('keywords') as $keyword)
             {{ $keyword['name'] }}@if(!$loop->last){{ __('common.commaListSeparator') }}@endif

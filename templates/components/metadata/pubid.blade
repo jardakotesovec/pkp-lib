@@ -16,9 +16,10 @@
     <x-metadata.default
         slug="{{ str_replace(':', '-', $id) }}"
         title="{{ $plugin->getPubIdDisplayType() }}"
+        :$headingTag
     >
         @if ($url)
-            <a href="{{ $iurl }}">
+            <a class="link" href="{{ $url }}">
                 {{ $url }}
             </a>
         @else

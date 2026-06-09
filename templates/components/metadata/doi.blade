@@ -5,8 +5,9 @@
     <x-metadata.default
         slug="doi"
         title="{{ __('doi.readerDisplayName') }}"
+        :$headingTag
     >
-        <a href="{{ $doiUrl }}">
+        <a href="{{ $doiUrl }}" class="link">
             {{ $doiUrl }}
         </a>
     </x-metadata.default>

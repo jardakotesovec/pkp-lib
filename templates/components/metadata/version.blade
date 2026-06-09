@@ -1,6 +1,7 @@
 <x-metadata.default
     slug="version"
     title="{{ __('admin.version') }}"
+    :$headingTag
 >
     <span>
         {{ $publication->getData('versionString') }}

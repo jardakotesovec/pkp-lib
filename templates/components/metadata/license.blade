@@ -2,6 +2,7 @@
     <x-metadata.default
         slug="license"
         title="{{ __('submission.license') }}"
+        :$headingTag
     >
         @if ($publication->getData('licenseUrl'))
             @php
@@ -12,14 +13,14 @@
             @endphp
             @if ($ccLicenseBadge)
                 @if ($publication->getLocalizedData('copyrightHolder'))
-                    <div>{{ $statement }}</div>
+                    <div class="metadata-license-copyright-holder">{{ $statement }}</div>
                 @endif
-                <div>
+                <div class="metadata-license-badge">
                     {!! $ccLicenseBadge !!}
                 </div>
             @else
-                <div>
-                    <a href="{{ $publication->getData('licenseUrl') }}">
+                <div class="metadata-license-url">
+                    <a class="link" href="{{ $publication->getData('licenseUrl') }}">
                         @if ($publication->getLocalizedData('copyrightHolder'))
                             {{ $statement }}
                         @else
@@ -29,6 +30,8 @@
                 </div>
             @endif
         @endif
-        {!! $currentContext->getLocalizedData('licenseTerms') !!}
+        <div class="metadata-license-terms">
+            {!! $currentContext->getLocalizedData('licenseTerms') !!}
+        </div>
     </x-metadata.default>
 @endif

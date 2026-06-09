@@ -1,13 +1,14 @@
 @props([
     'slug',
     'title' => '',
+    'headingTag' => 'h3',
 ])
 
 <div class="metadata-block metadata-block-id-{{ $slug }}">
     @if ($title)
-        <h3 class="metadata-block-title">
+        <{{ $headingTag }} class="metadata-block-title">
             {!! $title !!}
-        </h3>
+        </{{ $headingTag }}>
     @endif
     <div class="metadata-block-content">
         {!! $slot !!}

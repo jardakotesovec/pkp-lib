@@ -96,6 +96,11 @@ import {
 	NavigationMenuSub,
 	NavigationMenuTrigger,
 	NavigationMenuViewport,
+	TabsContent,
+	TabsIndicator,
+	TabsList,
+	TabsRoot,
+	TabsTrigger,
 } from 'reka-ui'
 
 // Helper for initializing and tracking Vue controllers
@@ -191,6 +196,11 @@ VueRegistry.registerComponent('NavigationMenuRoot', NavigationMenuRoot);
 VueRegistry.registerComponent('NavigationMenuSub', NavigationMenuSub);
 VueRegistry.registerComponent('NavigationMenuTrigger', NavigationMenuTrigger);
 VueRegistry.registerComponent('NavigationMenuViewport', NavigationMenuViewport);
+VueRegistry.registerComponent('TabsContent', TabsContent);
+VueRegistry.registerComponent('TabsIndicator', TabsIndicator);
+VueRegistry.registerComponent('TabsList', TabsList);
+VueRegistry.registerComponent('TabsRoot', TabsRoot);
+VueRegistry.registerComponent('TabsTrigger', TabsTrigger);
 
 const pinia = createPinia();
 

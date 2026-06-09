@@ -2,7 +2,10 @@
     <x-metadata.default
         slug="data-availability"
         title="{{ __('submission.dataAvailability') }}"
+        :$headingTag
     >
-        {!! ViewHelper::sanitizeHtml($publication->getLocalizedData('dataAvailability')) !!}
+        <div class="html-text">
+            {!! ViewHelper::sanitizeHtml($publication->getLocalizedData('dataAvailability')) !!}
+        </div>
     </x-metadata.default>
 @endif

@@ -6,6 +6,7 @@
                 ? __('submissions.published')
                 : __('announcement.posted')
         }}"
+        :$headingTag
     >
         {{ ViewHelper::dateFormat($publication->getData('datePublished'), $dateFormatLong) }}
     </x-metadata.default>

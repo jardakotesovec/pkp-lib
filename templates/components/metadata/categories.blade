@@ -2,9 +2,10 @@
     <x-metadata.default
         slug="categories"
         title="{{ __('category.category') }}"
+        :$headingTag
     >
         @foreach ($categories as $category)
-            <a href="@url(['catalog', 'category', $category->getPath()])">
+            <a class="link" href="@url(['catalog', 'category', $category->getPath()])">
                 {{ $category->getLocalizedTitle() }}
             </a>@if(!$loop->last){{ __('common.commaListSeparator') }}@endif
         @endforeach

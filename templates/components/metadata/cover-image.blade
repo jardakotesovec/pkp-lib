@@ -2,7 +2,7 @@
     $coverImage = $publication->getLocalizedData('coverImage');
 @endphp
 
-@if (!$coverImage)
+@if ($coverImage)
     <x-metadata.default
         slug="cover-image"
     >
