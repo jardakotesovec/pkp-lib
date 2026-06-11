@@ -39,6 +39,7 @@ use PKP\testing\scenario\Processor\ParticipantProcessor;
 use PKP\testing\scenario\Processor\PublicationsProcessor;
 use PKP\testing\scenario\Processor\ReviewRoundProcessor;
 use PKP\testing\scenario\Processor\SubmissionBuilderProcessor;
+use PKP\testing\scenario\Processor\UserCommentProcessor;
 use PKP\testing\scenario\ScenarioContext;
 
 class PKPSubmissionScenarioController extends PKPBaseController
@@ -120,6 +121,7 @@ class PKPSubmissionScenarioController extends PKPBaseController
         $reviewRoundProcessor = new ReviewRoundProcessor();
         $decisionProcessor = new DecisionProcessor($reviewRoundProcessor);
         $publicationsProcessor = new PublicationsProcessor();
+        $userCommentProcessor = new UserCommentProcessor();
 
         // No DB::transaction wrapper — running each processor in its
         // own implicit transaction lets Postgres release row locks as
@@ -142,6 +144,9 @@ class PKPSubmissionScenarioController extends PKPBaseController
                 if ($publicationsProcessor->appliesTo($spec)) {
                     $publicationsProcessor->run($spec, $ctx);
                 }
+                if ($userCommentProcessor->appliesTo($spec)) {
+                    $userCommentProcessor->run($spec, $ctx);
+                }
             } catch (\Throwable $e) {
                 return response()->json([
                     'error' => 'Scenario build failed',
@@ -158,9 +163,32 @@ class PKPSubmissionScenarioController extends PKPBaseController
     }
 
     /**
-     * Naive schema validation — Opis if available, else a minimal check
-     * that required top-level keys are present. Same pattern as Phase 1's
-     * bootstrap controller.
+     * App-specific additions to the scenario spec schema. The schema sets
+     * additionalProperties:false, so app-only spec keys (e.g. OJS's
+     * metrics) must be declared here to pass validation. Return a map of
+     * property name => JSON-schema definition as plain PHP arrays, e.g.
+     * ['metrics' => ['type' => 'object', 'properties' => [...]]].
+     * Merged into the schema's properties before validation; default none.
+     */
+    protected function schemaOverlayProperties(): array
+    {
+        return [];
+    }
+
+    /**
+     * Validate the spec against schema/submission.json (with the app's
+     * schemaOverlayProperties() merged in). Returns a human-readable
+     * error string naming the offending key(s)/path(s), or null when
+     * the spec is valid.
+     *
+     * Mirrors PKPContextScenarioController::validateAgainstSchema — the
+     * two scenario controllers share no base/trait below PKPBaseController
+     * (which is production code, not a place for test-only helpers), so
+     * the logic is duplicated inline. Keep both copies in sync.
+     *
+     * @throws \RuntimeException when the validator dependency is missing —
+     *   this endpoint only exists in test mode, where silently skipping
+     *   validation would let malformed specs seed misleading state.
      */
     private function validateAgainstSchema(array $spec, string $schemaPath): ?string
     {
@@ -168,25 +196,39 @@ class PKPSubmissionScenarioController extends PKPBaseController
             return "Schema file not found: {$schemaPath}";
         }
 
-        if (class_exists(\Opis\JsonSchema\Validator::class)) {
-            $validator = new \Opis\JsonSchema\Validator();
-            $result = $validator->validate(
-                json_decode(json_encode($spec)),
-                file_get_contents($schemaPath)
+        if (!class_exists(\Opis\JsonSchema\Validator::class)) {
+            throw new \RuntimeException(
+                'opis/json-schema is not installed but is required to validate scenario specs in test mode. '
+                . 'Run `composer install` in lib/pkp (it is declared in require-dev).'
             );
-            if (!$result->isValid()) {
-                $error = $result->error();
-                return $error ? $error->message() . ' at ' . implode('/', $error->data()->path()) : 'Validation failed';
-            }
+        }
+
+        $schema = json_decode(file_get_contents($schemaPath));
+        if (!is_object($schema)) {
+            return "Schema file is not valid JSON: {$schemaPath}";
+        }
+        foreach ($this->schemaOverlayProperties() as $property => $definition) {
+            // Adding the property to `properties` also exempts it from the
+            // additionalProperties:false check (draft-07 semantics).
+            $schema->properties->{$property} = json_decode(json_encode($definition));
+        }
+
+        $validator = new \Opis\JsonSchema\Validator();
+        $result = $validator->validate(json_decode(json_encode($spec)), $schema);
+        if ($result->isValid()) {
             return null;
         }
 
-        // Opis unavailable — minimal structural check.
-        foreach (['tag', 'journal', 'submitter', 'section'] as $required) {
-            if (empty($spec[$required])) {
-                return "spec.{$required} is required";
+        $error = $result->error();
+        if (!$error) {
+            return 'Validation failed';
+        }
+        $messages = [];
+        foreach ((new \Opis\JsonSchema\Errors\ErrorFormatter())->format($error) as $path => $pathMessages) {
+            foreach ((array) $pathMessages as $message) {
+                $messages[] = "{$path}: {$message}";
             }
         }
-        return null;
+        return implode('; ', $messages) ?: 'Validation failed';
     }
 }

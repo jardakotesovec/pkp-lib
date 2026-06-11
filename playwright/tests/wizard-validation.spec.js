@@ -67,8 +67,14 @@ test.describe('Submission wizard — validation', () => {
 			// automatically for rvaca (the submitter). Skip.
 			await wizard.continueStep();
 
-			// Step 4 is For the Editors — nothing required by default on
-			// this journal. Skip.
+			// Step 4 is For the Editors — keywords/citations are 'request'
+			// (optional) on the bootstrapped journal, so nothing blocks. Skip.
+			await wizard.continueStep();
+
+			// Step 5 is Reviewer Suggestions — present because
+			// reviewerSuggestionEnabled is on for the bootstrapped journal
+			// (playwright/fixtures/bootstrap.js). Suggestions are optional;
+			// skip.
 			await wizard.continueStep();
 
 			// Now on Review. The wizard runs server-side validation on

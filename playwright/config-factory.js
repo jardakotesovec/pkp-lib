@@ -210,6 +210,50 @@ module.exports = function createPlaywrightConfig({app}) {
 					'playwright/tests/**/*.spec.js',
 					'lib/pkp/playwright/tests/**/*.spec.js',
 				],
+				// Serial specs (charter principle 9: globally-scanning
+				// operations — scheduled tasks, site-level plugin toggles,
+				// cache clears) must NEVER run inside this parallel
+				// project; they live exclusively in the 'serial' project
+				// below.
+				testIgnore: [
+					'playwright/tests/serial/**',
+					'lib/pkp/playwright/tests/serial/**',
+				],
+				use: {...devices['Desktop Chrome']},
+			},
+			{
+				// Serial project — charter principles 8–9
+				// (docs/e2e/PRINCIPLES.md): specs whose effects span all
+				// journals/workers (scheduled-task reminders, site-level
+				// plugin toggles, cache clears, Mailpit clearAll) run here,
+				// one at a time, with no parallel neighbors.
+				//
+				// Ordering semantics: depending on the parallel app project
+				// (not just 'setup') means a full `playwright test` run
+				// executes setup → <app> (parallel) → serial, so serial
+				// specs are guaranteed to run ALONE at the END — Playwright
+				// only starts a project once all its dependencies have
+				// finished. Per principle 9 serial specs must not tolerate
+				// parallel neighbors, so this ordering is enforced, not
+				// merely documented. The trade-off: `--project=serial` also
+				// runs the full parallel suite first; use
+				// `--project=serial --no-deps` for local iteration on a
+				// serial spec when the baseline is already bootstrapped.
+				// `--project=<app>` (npm run test:e2e:ojs) is unaffected:
+				// it pulls in only its own 'setup' dependency.
+				//
+				// workers: 1 caps this project to a single worker process
+				// (supported per-project since Playwright 1.52) and
+				// fullyParallel: false keeps tests in declaration order —
+				// together they override the parallel-first defaults above.
+				name: 'serial',
+				dependencies: ['setup', app],
+				fullyParallel: false,
+				workers: 1,
+				testMatch: [
+					'playwright/tests/serial/**/*.spec.js',
+					'lib/pkp/playwright/tests/serial/**/*.spec.js',
+				],
 				use: {...devices['Desktop Chrome']},
 			},
 		],

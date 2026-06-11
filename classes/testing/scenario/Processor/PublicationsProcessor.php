@@ -22,23 +22,41 @@
 
 namespace PKP\testing\scenario\Processor;
 
+use APP\core\Application;
 use APP\facades\Repo;
 use APP\publication\enums\VersionStage;
 use PKP\security\Role;
 use PKP\stageAssignment\StageAssignment;
+use PKP\submissionFile\SubmissionFile;
+use PKP\testing\scenario\GenreLookup;
 use PKP\testing\scenario\ScenarioContext;
 use PKP\testing\scenario\ScenarioProcessor;
 
 class PublicationsProcessor implements ScenarioProcessor
 {
-    /** Content metadata fields the spec accepts under publications[].metadata. */
+    /**
+     * Content metadata fields the spec accepts under publications[].metadata.
+     *
+     * datePublished mirrors the editor capability in the publish flow:
+     * OJS's IssueEntryForm exposes the field
+     * (classes/components/forms/publication/IssueEntryForm.php:124-128)
+     * and it lands via the same Repo::publication()->edit() call. When set
+     * before publish, OJS's setStatusOnPublish keeps the predefined value
+     * instead of stamping today (classes/publication/Repository.php:219-226).
+     */
     private const METADATA_FIELDS = [
         'title', 'subtitle', 'prefix', 'abstract', 'plainLanguageSummary',
         'keywords', 'subjects', 'disciplines', 'supportingAgencies',
         'coverage', 'type', 'source', 'rights', 'fundingStatement',
         'dataAvailability', 'copyrightHolder', 'copyrightYear',
-        'licenseUrl', 'pages', 'urlPath',
+        'licenseUrl', 'pages', 'urlPath', 'datePublished',
     ];
+
+    /** Directory of bundled fixture files for galley uploads, relative to the OJS root. */
+    private const FIXTURE_FILES_DIR = 'lib/pkp/playwright/fixtures/files';
+
+    /** Fixture used when a galleys[] entry names no file. Same PDF the wizard seed attaches. */
+    private const DEFAULT_GALLEY_FIXTURE = 'default-article.pdf';
 
     /** Publication-level attribute fields the spec accepts directly on a publications[] entry. */
     private const ATTRIBUTE_FIELDS = ['jatsPublicVisibility'];
@@ -72,6 +90,14 @@ class PublicationsProcessor implements ScenarioProcessor
 
             $this->applyMetadataAndAttributes($publicationId, $pubSpec, $tag);
 
+            // Galleys are created in the production stage before the editor
+            // hits Publish, so seed them ahead of the publish() call — DOI
+            // minting and the publish event then see them like production.
+            $galleyFragments = [];
+            if (!empty($pubSpec['galleys'])) {
+                $galleyFragments = $this->seedGalleys($publicationId, $pubSpec['galleys'], $ctx);
+            }
+
             if (!empty($pubSpec['published'])) {
                 $this->publish($publicationId, $pubSpec, $ctx);
             }
@@ -85,6 +111,7 @@ class PublicationsProcessor implements ScenarioProcessor
                 'status' => $publication->getData('status'),
                 'issueId' => $publication->getData('issueId'),
                 'datePublished' => $publication->getData('datePublished'),
+                'galleys' => $galleyFragments,
             ]);
         }
 
@@ -132,6 +159,136 @@ class PublicationsProcessor implements ScenarioProcessor
 
         $publication = Repo::publication()->get($publicationId);
         Repo::publication()->edit($publication, $editParams);
+    }
+
+    /**
+     * Seed galleys on the target publication, mirroring the galley grid's
+     * two-step flow:
+     *
+     *  1. ArticleGalleyForm::execute() creates the galley row via
+     *     Repo::galley()->add(Repo::galley()->newDataObject([...])) with
+     *     publicationId / label / locale / urlPath / urlRemote
+     *     (controllers/grid/articleGalleys/form/ArticleGalleyForm.php:171-193).
+     *  2. The galley file-upload wizard attaches a SubmissionFile at the
+     *     PROOF stage with assocType = ASSOC_TYPE_REPRESENTATION and
+     *     assocId = galleyId, field-for-field as
+     *     SubmissionFilesUploadForm::execute() (lines 183-238). OJS's
+     *     submissionFile Repository::add() then wires
+     *     galley.submissionFileId automatically
+     *     (classes/submissionFile/Repository.php:40-58).
+     *
+     * Remote galleys (urlRemote) carry no file, exactly as the form allows.
+     */
+    private function seedGalleys(int $publicationId, array $galleySpecs, ScenarioContext $ctx): array
+    {
+        $submission = Repo::submission()->get($ctx->submissionId());
+        $contextId = $ctx->submissionContextId();
+        $fragments = [];
+
+        foreach ($galleySpecs as $galleySpec) {
+            if (!empty($galleySpec['file']) && !empty($galleySpec['urlRemote'])) {
+                throw new \InvalidArgumentException(
+                    "galleys[] entry '{$galleySpec['label']}' sets both `file` and `urlRemote` — a galley is either a file galley or a remote galley, never both."
+                );
+            }
+
+            $locale = $galleySpec['locale'] ?? $submission->getData('locale');
+            $isRemote = !empty($galleySpec['urlRemote']);
+
+            // Step 1 — the galley row (ArticleGalleyForm::execute data shape).
+            $galleyId = Repo::galley()->add(Repo::galley()->newDataObject([
+                'publicationId' => $publicationId,
+                'label' => $galleySpec['label'],
+                'locale' => $locale,
+                'urlPath' => null,
+                'urlRemote' => $isRemote ? $galleySpec['urlRemote'] : null,
+            ]));
+
+            // Step 2 — the PROOF-stage file, unless this is a remote galley.
+            $submissionFileId = null;
+            if (!$isRemote) {
+                $submissionFileId = $this->attachGalleyFile(
+                    $galleyId,
+                    $galleySpec['file'] ?? self::DEFAULT_GALLEY_FIXTURE,
+                    $submission,
+                    $contextId
+                );
+            }
+
+            $fragments[] = [
+                'id' => $galleyId,
+                'label' => $galleySpec['label'],
+                'locale' => $locale,
+                'submissionFileId' => $submissionFileId,
+                'urlRemote' => $isRemote ? $galleySpec['urlRemote'] : null,
+            ];
+        }
+
+        return $fragments;
+    }
+
+    /**
+     * Copy a bundled fixture into the submission's files-dir tree and create
+     * the matching PROOF-stage SubmissionFile attached to the galley. Field
+     * set mirrors SubmissionFilesUploadForm::execute() (lines 214-235) for a
+     * fresh upload into the galley grid: fileStage = SUBMISSION_FILE_PROOF,
+     * assocType = ASSOC_TYPE_REPRESENTATION, assocId = the galley, name
+     * keyed by the submission locale, genre = Article Text. The uploader is
+     * attributed to the admin user since the Processor runs out-of-session
+     * (same convention as ReviewRoundProcessor's event-log rows).
+     */
+    private function attachGalleyFile(
+        int $galleyId,
+        string $fixtureName,
+        \APP\submission\Submission $submission,
+        int $contextId
+    ): int {
+        $fixturePath = $this->resolveGalleyFixturePath($fixtureName);
+        $genre = GenreLookup::genreForKey($contextId, 'ARTICLE');
+        $admin = Repo::user()->getByUsername('admin', true);
+
+        $submissionDir = Repo::submissionFile()->getSubmissionDir($contextId, $submission->getId());
+        $extension = pathinfo($fixtureName, PATHINFO_EXTENSION);
+        $fileId = app()->get('file')->add(
+            $fixturePath,
+            $submissionDir . '/' . uniqid() . ($extension !== '' ? '.' . $extension : '')
+        );
+
+        $submissionFile = Repo::submissionFile()->dao->newDataObject();
+        $submissionFile->setData('fileId', $fileId);
+        $submissionFile->setData('fileStage', SubmissionFile::SUBMISSION_FILE_PROOF);
+        $submissionFile->setData('name', basename($fixtureName), $submission->getData('locale'));
+        $submissionFile->setData('submissionId', $submission->getId());
+        $submissionFile->setData('uploaderUserId', $admin?->getId());
+        $submissionFile->setData('assocType', Application::ASSOC_TYPE_REPRESENTATION);
+        $submissionFile->setData('assocId', $galleyId);
+        $submissionFile->setData('genreId', (int)$genre->getId());
+
+        // Repo::submissionFile()->add() also writes the two upload event-log
+        // rows and sets galley.submissionFileId (APP\submissionFile\Repository).
+        return Repo::submissionFile()->add($submissionFile);
+    }
+
+    /**
+     * Locate a bundled fixture file for a galley. Same root-resolution
+     * pattern as SubmissionBuilderProcessor::resolveFixturePath(). The
+     * name is reduced to its basename so specs can't traverse outside
+     * the fixtures directory.
+     */
+    private function resolveGalleyFixturePath(string $fixtureName): string
+    {
+        $base = defined('INDEX_FILE_LOCATION')
+            ? dirname(INDEX_FILE_LOCATION)
+            : dirname(__DIR__, 6);
+
+        $path = $base . '/' . self::FIXTURE_FILES_DIR . '/' . basename($fixtureName);
+        if (!is_readable($path)) {
+            throw new \RuntimeException(
+                "Galley fixture '{$fixtureName}' not readable at {$path}. "
+                . 'Add the file to ' . self::FIXTURE_FILES_DIR . ' or reference an existing fixture.'
+            );
+        }
+        return $path;
     }
 
     /**

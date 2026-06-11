@@ -251,9 +251,10 @@ test.describe('Categories — wizard field rendering', () => {
 				await wizard.continueStep();
 				await wizard.continueStep();
 				await wizard.continueStep();
+				await wizard.expectStep('For the Editors');
 
-				// On "For the Editors". The Categories field renders
-				// as a FieldAutosuggestPreset with a "Select Categories"
+				// The Categories field renders as a
+				// FieldAutosuggestPreset with a "Select Categories"
 				// button that opens a tree-picker modal.
 				const selectBtn = page.getByRole('button', {
 					name: 'Select Categories',

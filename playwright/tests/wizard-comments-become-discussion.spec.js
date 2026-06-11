@@ -90,6 +90,11 @@ test.describe('Submission wizard — comments for the editor', () => {
 			// comment into the commentsForTheEditors TinyMCE.
 			await wizard.setCommentsForEditors(comment);
 
+			// Step 5 Reviewer Suggestions — present because
+			// reviewerSuggestionEnabled is on for the bootstrapped journal
+			// (playwright/fixtures/bootstrap.js); suggestions are optional.
+			await wizard.continueStep();
+
 			// Advance to Review. The comment should render inside the
 			// "For the Editors" review panel with the exact text back
 			// (proves both the autosave pipeline and the review-panel
@@ -131,7 +136,21 @@ test.describe('Submission wizard — comments for the editor', () => {
 		},
 	);
 
-	test(
+	// FIXME: documented pre-existing flake — see
+	// docs/scenario-processor-audit.md §3 ("Pre-existing flake"):
+	// `commentsForTheEditors` intermittently comes back null after the
+	// wizard's Submit click; verified independent of all scenario/
+	// Processor changes (reproduces at pre-audit b8b47466b1). Likely DB
+	// state accumulation or a TinyMCE init race — needs its own
+	// investigation, not test-side papering. The Reviewer-Suggestions
+	// step shift (bootstrap enrichment) has been fixed below and the
+	// flow reaches Submit; only the flake remains. Re-verified
+	// 2026-06-11 after rebuilding the stale asset bundle (reduced-motion
+	// CSS restored): still reproduces — 4 failures across 9 repeats
+	// under parallel load, so it is not animation-driven. Per the plan
+	// rules (docs/e2e/PRINCIPLES.md plan-file format), this test backs
+	// no `implemented` plan row until the fixme is resolved.
+	test.fixme(
 		'wizard end-to-end: file upload + comment + Submit creates a Stage 1 Comments for the Editor discussion',
 		{tag: '@regression'},
 		async ({page}) => {
@@ -220,7 +239,11 @@ test.describe('Submission wizard — comments for the editor', () => {
 			// On step 4 — type the comment that becomes the
 			// discussion body on submit.
 			await wizard.setCommentsForEditors(comment);
-			// Step 4 → Step 5 (Review).
+			// Step 4 → Step 5 (Reviewer Suggestions — present because
+			// reviewerSuggestionEnabled is on for the bootstrapped
+			// journal; suggestions are optional).
+			await wizard.continueStep();
+			// Step 5 → Step 6 (Review).
 			await wizard.continueStep();
 
 			// Capture the submission id from the URL before submit

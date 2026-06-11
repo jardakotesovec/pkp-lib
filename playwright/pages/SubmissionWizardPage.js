@@ -147,6 +147,21 @@ exports.SubmissionWizardPage = class SubmissionWizardPage extends BasePage {
 	}
 
 	/**
+	 * Assert which wizard step is active, via the Steps rail's current
+	 * pill. Call before step-specific assertions so a mis-advanced
+	 * wizard (e.g. a Continue click swallowed during a slow autosave
+	 * under parallel load) fails with a clear step-name mismatch
+	 * instead of an opaque locator timeout.
+	 *
+	 * @param {string} stepName  e.g. 'For the Editors', 'Review'
+	 */
+	async expectStep(stepName) {
+		await expect(
+			this.page.locator('.pkpSteps__step__label--current'),
+		).toContainText(stepName);
+	}
+
+	/**
 	 * Set the Details step's Title field for a specific locale.
 	 *
 	 * @param {string} title

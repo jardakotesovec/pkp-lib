@@ -6,36 +6,64 @@
  * scenario controllers' Mail::fake(); only test-action mail (decisions
  * submitted via UI, password resets, invitations, etc.) reaches Mailpit.
  *
- * Tests opt in by destructuring `pkpMail` from the test fixture:
+ * Tests opt in by destructuring `pkpMail` from the test fixture.
+ * Mailpit is SHARED across parallel workers (charter principle 8,
+ * docs/e2e/PRINCIPLES.md) — always scope reads by recipient + the
+ * test's unique tag. `find` / `expectNone` are the canonical helpers:
  *
  *   test('something', async ({page, pkpMail}) => {
- *     await pkpMail.clearAll();
- *     await page.goto('/index.php/index/login/lostPassword');
- *     ...
- *     const messages = await pkpMail.inboxFor('dbarnes@mailinator.com');
- *     expect(messages[0].Subject).toContain('Password Reset');
+ *     // ...UI action that sends mail tagged with the scenario tag...
+ *     const [message] = await pkpMail.find({
+ *       to: 'dbarnes@mailinator.com',
+ *       contains: tag,
+ *     });
+ *     expect(message.Subject).toContain('Password Reset');
  *   });
  *
  * Mailpit's API conventions (verified live against v1.29.7):
  *  - GET    /api/v1/messages?query=<search>  → {messages: [{ID, From, To, Subject, Created, Snippet}, ...]}
+ *  - GET    /api/v1/search?query=<search>    → same shape (canonical search endpoint)
  *  - DELETE /api/v1/messages                 → 200 on success
  *  - GET    /api/v1/message/:id              → full message body (HTML/Text/Headers)
- * Search-query syntax uses prefixes like `to:`, `from:`, `subject:`.
+ * Search-query syntax uses prefixes like `to:`, `from:`, `subject:`;
+ * bare (optionally quoted) terms match across subject + body content.
  */
 exports.createMailClient = function ({mailpitUrl, request}) {
 	const base = mailpitUrl ?? process.env.MAILPIT_URL ?? 'http://127.0.0.1:8025';
+
+	/**
+	 * Single-shot Mailpit search; returns the (possibly empty) message
+	 * list, newest first. Internal building block for `find` /
+	 * `expectNone`.
+	 *
+	 * @param {string} query  Mailpit search-syntax query
+	 * @returns {Promise<Array<object>>}
+	 */
+	async function searchOnce(query) {
+		const res = await request.get(
+			`${base}/api/v1/search?query=${encodeURIComponent(query)}`,
+		);
+		if (!res.ok()) {
+			throw new Error(
+				`Mailpit search failed: ${res.status()} ${await res.text()}`,
+			);
+		}
+		const body = await res.json();
+		return body.messages ?? [];
+	}
 
 	return {
 		/**
 		 * Delete every message in Mailpit's inbox.
 		 *
+		 * **Permitted ONLY in the dedicated serial test-infrastructure
+		 * spec** (charter principle 8, docs/e2e/PRINCIPLES.md) — never in
+		 * parallel specs.
+		 *
 		 * **Race warning** — Mailpit is shared across parallel workers.
 		 * Calling `clearAll()` while another worker is mid-flow can wipe
-		 * mail it just sent. Prefer `deleteForRecipient(email)` (scoped
-		 * delete) or filter-by-tag in the Subject when reading
-		 * (see `inboxFor` callers in issues.spec.js for the pattern).
-		 * Use `clearAll()` only in serial-mode specs or before the very
-		 * first send of a run.
+		 * mail it just sent. Use `find()` / `expectNone()` (scoped by
+		 * recipient + unique tag) or `deleteForRecipient(email)` instead.
 		 */
 		async clearAll() {
 			const res = await request.delete(`${base}/api/v1/messages`);
@@ -113,6 +141,94 @@ exports.createMailClient = function ({mailpitUrl, request}) {
 		},
 
 		/**
+		 * Scoped positive query — the canonical principle-8 read. Polls
+		 * Mailpit's search API until at least one message addressed to
+		 * `to` whose content (subject + body) contains the `contains`
+		 * marker (the test's unique tag) appears, then returns the
+		 * matching messages, newest first. Safe under parallel-worker
+		 * load: scoping by recipient + unique marker means other
+		 * workers' mail never matches.
+		 *
+		 * @param {object} opts
+		 * @param {string} opts.to        recipient (matches To/Cc/Bcc)
+		 * @param {string} opts.contains  unique content marker, e.g. the scenario tag
+		 * @param {string=} opts.subject  optional additional subject filter
+		 * @param {number=} opts.timeoutMs  give-up deadline (default 10s)
+		 * @param {number=} opts.poll       poll interval ms (default 250)
+		 * @returns {Promise<Array<object>>} matching messages in Mailpit's
+		 *   PascalCase shape: {ID, From, To, Subject, Created, Snippet, ...}.
+		 *   Use `fullMessage(id)` for the complete body.
+		 */
+		async find({to, contains, subject, timeoutMs = 10_000, poll = 250}) {
+			if (!to || !contains) {
+				throw new Error(
+					'pkpMail.find requires both `to` and `contains` — unscoped ' +
+						'queries race against parallel workers (principle 8).',
+				);
+			}
+			const query = buildScopedQuery({to, contains, subject});
+			const deadline = Date.now() + timeoutMs;
+			while (Date.now() < deadline) {
+				const messages = await searchOnce(query);
+				if (messages.length > 0) {
+					return messages;
+				}
+				await new Promise((r) => setTimeout(r, poll));
+			}
+			// Distinguish "no mail at all for this recipient" from "mail
+			// arrived but the marker didn't match" in the failure message.
+			const forRecipient = await searchOnce(buildScopedQuery({to}));
+			throw new Error(
+				`No mail matching ${JSON.stringify(query)} within ${timeoutMs}ms ` +
+					`(${forRecipient.length} message(s) total for ${to})`,
+			);
+		},
+
+		/**
+		 * Scoped negative assertion — principle 8's required shape for
+		 * "no email sent". First waits for a positive control message
+		 * (`afterControl`) that the test triggered AFTER the action that
+		 * must not send mail; its arrival bounds the wait (mail delivery
+		 * is ordered enough that once the later control is in Mailpit,
+		 * the earlier negative target would be too). Then asserts zero
+		 * messages match the negative target and throws otherwise.
+		 *
+		 * @param {object} opts
+		 * @param {string} opts.to        recipient the mail must NOT have gone to
+		 * @param {string=} opts.contains optional content marker narrowing the negative target
+		 * @param {{to: string, contains: string}} opts.afterControl
+		 *   positive control message to wait for before asserting
+		 * @param {number=} opts.timeoutMs  deadline for the control message (default 10s)
+		 * @returns {Promise<void>}
+		 */
+		async expectNone({to, contains, afterControl, timeoutMs = 10_000}) {
+			if (!to) {
+				throw new Error('pkpMail.expectNone requires `to`.');
+			}
+			if (!afterControl?.to || !afterControl?.contains) {
+				throw new Error(
+					'pkpMail.expectNone requires afterControl {to, contains} — a ' +
+						'negative assertion without a positive control message is ' +
+						'an unbounded wait (principle 8).',
+				);
+			}
+			await this.find({
+				to: afterControl.to,
+				contains: afterControl.contains,
+				timeoutMs,
+			});
+			const query = buildScopedQuery({to, contains});
+			const matches = await searchOnce(query);
+			if (matches.length > 0) {
+				const subjects = matches.map((m) => m.Subject).join('; ');
+				throw new Error(
+					`Expected no mail matching ${JSON.stringify(query)} but found ` +
+						`${matches.length}: ${subjects}`,
+				);
+			}
+		},
+
+		/**
 		 * Total number of messages currently in Mailpit (any recipient,
 		 * any subject). Useful for leak-detection assertions — e.g.
 		 * confirming `Mail::fake()` in scenario controllers really
@@ -164,4 +280,37 @@ exports.createMailClient = function ({mailpitUrl, request}) {
 
 function escapeRegex(s) {
 	return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Build a Mailpit search query scoped by recipient, with optional
+ * subject filter and free-text content marker. All terms AND together
+ * in Mailpit's search syntax.
+ *
+ * @param {{to: string, contains?: string, subject?: string}} opts
+ * @returns {string}
+ */
+function buildScopedQuery({to, contains, subject}) {
+	const parts = [`to:${quoteSearchTerm(to)}`];
+	if (subject) {
+		parts.push(`subject:${quoteSearchTerm(subject)}`);
+	}
+	if (contains) {
+		parts.push(quoteSearchTerm(contains));
+	}
+	return parts.join(' ');
+}
+
+/**
+ * Quote a Mailpit search term when it contains whitespace so it
+ * matches as a phrase. Mailpit's syntax has no quote-escaping, so
+ * embedded double quotes are stripped (they can't appear in the
+ * tags/addresses tests use anyway).
+ *
+ * @param {string} term
+ * @returns {string}
+ */
+function quoteSearchTerm(term) {
+	const cleaned = String(term).replace(/"/g, '');
+	return /\s/.test(cleaned) ? `"${cleaned}"` : cleaned;
 }

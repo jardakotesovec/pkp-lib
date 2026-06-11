@@ -8,9 +8,14 @@
  *
  * Behaviour (mirrors the .sh exactly):
  *   1. Idempotent: returns early if config.test.inc.php already exists.
+ *      (Corollary: after adding a new substitution below, delete the
+ *      existing config.test.inc.php once so it gets re-seeded.)
  *   2. Copy config.TEMPLATE.inc.php → config.test.inc.php.
- *   3. Apply 4 line-anchored substitutions to point [email] at Mailpit
- *      (127.0.0.1:1025) so the pkpMail fixture sees test-action mail.
+ *   3. Apply line-anchored substitutions: 4 to point [email] at Mailpit
+ *      (127.0.0.1:1025) so the pkpMail fixture sees test-action mail,
+ *      plus 1 setting api_key_secret to a fixed test-only value — the
+ *      template ships it empty, and without it API-key Bearer tokens
+ *      can't be signed/verified.
  *   4. Verify each substitution actually landed; abort loudly if any
  *      didn't (config.TEMPLATE.inc.php drifted) so the failure is
  *      "webServer didn't start" instead of "Mailpit asserts time out
@@ -39,6 +44,12 @@ const SUBSTITUTIONS = [
 	{from: /^; smtp = On$/m, to: 'smtp = On'},
 	{from: /^; smtp_server = mail\.example\.com$/m, to: 'smtp_server = 127.0.0.1'},
 	{from: /^; smtp_port = 25$/m, to: 'smtp_port = 1025'},
+	// Test-only signing secret for API-key Bearer tokens. NOT a secret —
+	// it only ever signs keys for the disposable Playwright database.
+	{
+		from: /^api_key_secret = ""$/m,
+		to: 'api_key_secret = "playwright-api-key-secret-not-a-secret"',
+	},
 ];
 
 const REQUIRED_PATTERNS_AFTER = [
@@ -46,6 +57,7 @@ const REQUIRED_PATTERNS_AFTER = [
 	/^smtp = On$/m,
 	/^smtp_server = 127\.0\.0\.1$/m,
 	/^smtp_port = 1025$/m,
+	/^api_key_secret = "playwright-api-key-secret-not-a-secret"$/m,
 ];
 
 function seedTestConfig() {

@@ -186,8 +186,15 @@ test.describe('Decision — request revisions', () => {
 		await wizard.locator('button#continueButton').click();
 
 		// Step 2 — Review Details. Name pre-filled from the filename
-		// (default-article.pdf); just click Continue.
-		await expect(wizard.getByText(/Name the file/i)).toBeVisible({
+		// (default-article.pdf); just click Continue. The metadata form
+		// renders one "Name the file" label per supported form locale
+		// (visible en label + fr_CA screen-reader span on the
+		// multilingual publicknowledge journal), so a bare
+		// getByText(/Name the file/) is not strict-mode-safe. Anchor on
+		// the primary-locale (en) control's label instead.
+		await expect(
+			wizard.locator('label[for$="-name-control-en"]'),
+		).toBeVisible({
 			timeout: 10_000,
 		});
 		await wizard.locator('button#continueButton').click();

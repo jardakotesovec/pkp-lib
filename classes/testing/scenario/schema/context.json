@@ -22,10 +22,34 @@
         "doiVersioning": { "type": "boolean" },
         "enabledDoiTypes": { "type": "array", "items": { "type": "string" } },
         "registrationAgency": { "type": "string" },
+        "doiCreationTime": {
+            "description": "When DOIs are assigned. 'copyEditCreationTime' (entity-schema default) and 'publicationCreationTime' mint automatically; 'neverCreationTime' requires manual assignment.",
+            "enum": ["copyEditCreationTime", "publicationCreationTime", "neverCreationTime"]
+        },
         "onlineIssn": { "type": "string" },
         "printIssn": { "type": "string" },
         "enablePublicComments": { "type": "boolean" },
+        "enableAnnouncements": { "type": "boolean" },
         "publishingMode": { "type": "integer" },
+        "keywords": {
+            "description": "Submission-wizard keywords metadata mode. 0 disables; 'enable' shows in workflow only; 'request'/'require' expose it to authors.",
+            "enum": [0, "0", "enable", "request", "require"]
+        },
+        "citations": {
+            "description": "Submission-wizard citations (references) metadata mode. Same values as keywords.",
+            "enum": [0, "0", "enable", "request", "require"]
+        },
+        "reviewerSuggestionEnabled": { "type": "boolean" },
+        "defaultReviewMode": {
+            "description": "1 = anonymous reviewer / disclosed author, 2 = double anonymous, 3 = open.",
+            "enum": [1, 2, 3]
+        },
+        "numWeeksPerResponse": { "type": "integer", "minimum": 0 },
+        "numWeeksPerReview": { "type": "integer", "minimum": 0 },
+        "numDaysBeforeReviewResponseReminderDue": { "type": "integer", "minimum": 0, "maximum": 14 },
+        "numDaysAfterReviewResponseReminderDue": { "type": "integer", "minimum": 0, "maximum": 14 },
+        "numDaysBeforeReviewSubmitReminderDue": { "type": "integer", "minimum": 0, "maximum": 14 },
+        "numDaysAfterReviewSubmitReminderDue": { "type": "integer", "minimum": 0, "maximum": 14 },
         "plugins": {
             "type": "object",
             "additionalProperties": {
@@ -60,6 +84,39 @@
         "categories": {
             "type": "array",
             "items": { "$ref": "#/$defs/category" }
+        },
+        "reviewForms": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["title", "elements"],
+                "additionalProperties": false,
+                "properties": {
+                    "title": { "$ref": "#/$defs/localizedString" },
+                    "description": { "$ref": "#/$defs/localizedString" },
+                    "elements": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "required": ["type", "question"],
+                            "additionalProperties": false,
+                            "properties": {
+                                "type": {
+                                    "enum": ["smalltextfield", "textfield", "textarea", "checkboxes", "radiobuttons", "dropdown", "dropdownbox"]
+                                },
+                                "question": { "$ref": "#/$defs/localizedString" },
+                                "required": { "type": "boolean" },
+                                "includedInReview": { "type": "boolean" },
+                                "options": {
+                                    "type": "array",
+                                    "minItems": 1,
+                                    "items": { "$ref": "#/$defs/localizedString" }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         },
         "issues": {
             "type": "array",
@@ -98,6 +155,12 @@
         }
     },
     "$defs": {
+        "localizedString": {
+            "oneOf": [
+                { "type": "string" },
+                { "type": "object", "additionalProperties": { "type": "string" } }
+            ]
+        },
         "category": {
             "type": "object",
             "required": ["path", "title"],

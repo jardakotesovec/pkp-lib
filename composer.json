@@ -44,6 +44,7 @@
 		"captainhook/plugin-composer": "^5.3",
 		"friendsofphp/php-cs-fixer": "^3.8",
 		"mockery/mockery": "^1.6",
+		"opis/json-schema": "^2.4",
 		"phpstan/extension-installer": "^1.4",
 		"phpunit/phpunit": "~11",
 		"psy/psysh": "@stable",

@@ -39,6 +39,7 @@ use PKP\core\PKPRequest;
 use PKP\testing\bootstrap\Processor\CategoryProcessor;
 use PKP\testing\bootstrap\Processor\SectionProcessor;
 use PKP\testing\scenario\Processor\ContextBuilderProcessor;
+use PKP\testing\scenario\Processor\ReviewFormProcessor;
 use PKP\testing\scenario\Processor\UserAssignmentProcessor;
 use PKP\testing\scenario\ScenarioContext;
 
@@ -92,6 +93,8 @@ abstract class PKPContextScenarioController extends PKPBaseController
         $userAssignment = new UserAssignmentProcessor();
         $sectionProcessor = new SectionProcessor();
         $categoryProcessor = new CategoryProcessor();
+        $reviewFormProcessor = new ReviewFormProcessor();
+        $reviewFormsResult = null;
 
         // No DB::transaction wrapper — running each processor in its
         // own implicit transaction lets Postgres release row locks (in
@@ -115,6 +118,14 @@ abstract class PKPContextScenarioController extends PKPBaseController
                     $spec['path']
                 );
                 $editorsToAssign = $sectionResult['editorsToAssign'] ?? [];
+            }
+
+            if (!empty($spec['reviewForms'])) {
+                $reviewFormsResult = $reviewFormProcessor->run(
+                    $contextId,
+                    $spec['reviewForms'],
+                    $spec['primaryLocale'] ?? 'en'
+                );
             }
 
             if ($userAssignment->appliesTo($spec)) {
@@ -143,7 +154,13 @@ abstract class PKPContextScenarioController extends PKPBaseController
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
 
-        return response()->json($ctx->contextScenarioResponse($spec), Response::HTTP_OK);
+        $response = $ctx->contextScenarioResponse($spec);
+        if ($reviewFormsResult !== null) {
+            // Review form + element IDs so tests can select a seeded form
+            // when assigning reviewers without scraping the settings grid.
+            $response['reviewForms'] = $reviewFormsResult;
+        }
+        return response()->json($response, Response::HTTP_OK);
     }
 
     /**
@@ -160,9 +177,27 @@ abstract class PKPContextScenarioController extends PKPBaseController
     }
 
     /**
-     * Naive schema validation — Opis if available, else a minimal check
-     * that required top-level keys are present. Mirrors the pattern used
-     * by PKPSubmissionScenarioController.
+     * App-specific additions to the scenario spec schema. The schema sets
+     * additionalProperties:false, so app-only spec keys (e.g. OJS's
+     * subscriptions[]) must be declared here to pass validation. Return a
+     * map of property name => JSON-schema definition as plain PHP arrays,
+     * e.g. ['subscriptions' => ['type' => 'array', 'items' => [...]]].
+     * Merged into the schema's properties before validation; default none.
+     */
+    protected function schemaOverlayProperties(): array
+    {
+        return [];
+    }
+
+    /**
+     * Validate the spec against schema/context.json (with the app's
+     * schemaOverlayProperties() merged in). Returns a human-readable
+     * error string naming the offending key(s)/path(s), or null when
+     * the spec is valid.
+     *
+     * @throws \RuntimeException when the validator dependency is missing —
+     *   this endpoint only exists in test mode, where silently skipping
+     *   validation would let malformed specs seed misleading state.
      */
     private function validateAgainstSchema(array $spec, string $schemaPath): ?string
     {
@@ -170,22 +205,39 @@ abstract class PKPContextScenarioController extends PKPBaseController
             return "Schema file not found: {$schemaPath}";
         }
 
-        if (class_exists(\Opis\JsonSchema\Validator::class)) {
-            $validator = new \Opis\JsonSchema\Validator();
-            $result = $validator->validate(
-                json_decode(json_encode($spec)),
-                file_get_contents($schemaPath)
+        if (!class_exists(\Opis\JsonSchema\Validator::class)) {
+            throw new \RuntimeException(
+                'opis/json-schema is not installed but is required to validate scenario specs in test mode. '
+                . 'Run `composer install` in lib/pkp (it is declared in require-dev).'
             );
-            if (!$result->isValid()) {
-                $error = $result->error();
-                return $error ? $error->message() . ' at ' . implode('/', $error->data()->path()) : 'Validation failed';
-            }
+        }
+
+        $schema = json_decode(file_get_contents($schemaPath));
+        if (!is_object($schema)) {
+            return "Schema file is not valid JSON: {$schemaPath}";
+        }
+        foreach ($this->schemaOverlayProperties() as $property => $definition) {
+            // Adding the property to `properties` also exempts it from the
+            // additionalProperties:false check (draft-07 semantics).
+            $schema->properties->{$property} = json_decode(json_encode($definition));
+        }
+
+        $validator = new \Opis\JsonSchema\Validator();
+        $result = $validator->validate(json_decode(json_encode($spec)), $schema);
+        if ($result->isValid()) {
             return null;
         }
 
-        if (empty($spec['tag'])) {
-            return 'spec.tag is required';
+        $error = $result->error();
+        if (!$error) {
+            return 'Validation failed';
         }
-        return null;
+        $messages = [];
+        foreach ((new \Opis\JsonSchema\Errors\ErrorFormatter())->format($error) as $path => $pathMessages) {
+            foreach ((array) $pathMessages as $message) {
+                $messages[] = "{$path}: {$message}";
+            }
+        }
+        return implode('; ', $messages) ?: 'Validation failed';
     }
 }

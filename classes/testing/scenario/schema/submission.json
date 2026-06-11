@@ -68,6 +68,36 @@
             }
         },
 
+        "reviewerSuggestions": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["givenName", "familyName", "email"],
+                "additionalProperties": false,
+                "properties": {
+                    "givenName": { "type": "string", "minLength": 1 },
+                    "familyName": { "type": "string", "minLength": 1 },
+                    "email": { "type": "string", "minLength": 3 },
+                    "affiliation": { "type": "string" },
+                    "suggestionReason": { "type": "string" }
+                }
+            }
+        },
+
+        "userComments": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["user", "text"],
+                "additionalProperties": false,
+                "properties": {
+                    "user": { "type": "string", "minLength": 1 },
+                    "text": { "type": "string", "minLength": 1 },
+                    "approved": { "type": "boolean" }
+                }
+            }
+        },
+
         "publications": {
             "type": "array",
             "minItems": 1,
@@ -100,7 +130,8 @@
                         "toEditor": { "type": "string" },
                         "toAuthor": { "type": "string" }
                     }
-                }
+                },
+                "reviewForm": { "type": "string", "minLength": 1 }
             }
         },
 
@@ -129,7 +160,23 @@
                         }
                     ]
                 },
-                "published": { "type": "boolean" }
+                "published": { "type": "boolean" },
+                "galleys": {
+                    "type": "array",
+                    "items": { "$ref": "#/$defs/galley" }
+                }
+            }
+        },
+
+        "galley": {
+            "type": "object",
+            "required": ["label"],
+            "additionalProperties": false,
+            "properties": {
+                "label": { "type": "string", "minLength": 1 },
+                "locale": { "type": "string" },
+                "file": { "type": "string", "minLength": 1 },
+                "urlRemote": { "type": "string", "minLength": 1 }
             }
         }
     }

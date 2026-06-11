@@ -126,6 +126,20 @@ class ReviewRoundProcessor
         $createParams['dateResponseDue'] = $reviewerSpec['responseDueDate']
             ?? $this->defaultResponseDueDate($context);
 
+        // Optional named review form. The Add Reviewer form offers the
+        // context's *active* review forms (ReviewerForm::fetch(),
+        // lib/pkp/controllers/grid/users/reviewer/form/ReviewerForm.php:258-264)
+        // and stamps the validated reviewFormId onto the assignment right
+        // after creation (ReviewerForm::execute(), lines 366-377). The
+        // processor resolves the title to the same ID and sets it in
+        // createParams — the final row is identical.
+        if (!empty($reviewerSpec['reviewForm'])) {
+            $createParams['reviewFormId'] = $this->resolveReviewFormId(
+                $reviewerSpec['reviewForm'],
+                $contextId
+            );
+        }
+
         $assignment = Repo::reviewAssignment()->newDataObject($createParams);
         $assignmentId = Repo::reviewAssignment()->add($assignment);
         $assignment = Repo::reviewAssignment()->get($assignmentId);
@@ -415,6 +429,44 @@ class ReviewRoundProcessor
                     "Unknown reviewer status '{$status}'. Use 'invited' | 'accepted' | 'declined' | 'completed' | 'cancelled'."
                 );
         }
+    }
+
+    /**
+     * Resolve a review form title (any locale, exact match) to its ID,
+     * scoped to the journal's *active* review forms — the same set the
+     * Add Reviewer form's dropdown offers
+     * (ReviewFormDAO::getActiveByAssocId with the context assoc type).
+     * Errors clearly when no active form carries the title.
+     */
+    private function resolveReviewFormId(string $title, int $contextId): int
+    {
+        /** @var \PKP\reviewForm\ReviewFormDAO $reviewFormDao */
+        $reviewFormDao = DAORegistry::getDAO('ReviewFormDAO');
+        $reviewFormsIterator = $reviewFormDao->getActiveByAssocId(
+            Application::getContextAssocType(),
+            $contextId
+        );
+
+        $availableTitles = [];
+        while ($reviewForm = $reviewFormsIterator->next()) {
+            /** @var \PKP\reviewForm\ReviewForm $reviewForm */
+            $allTitles = (array)($reviewForm->getTitle(null) ?? []);
+            foreach ($allTitles as $localizedTitle) {
+                if ((string)$localizedTitle === $title) {
+                    return (int)$reviewForm->getId();
+                }
+            }
+            // Raw locale map (not getLocalizedTitle) so the error message
+            // doesn't depend on a request context being attached.
+            $availableTitles[] = implode(' / ', array_map(strval(...), $allTitles));
+        }
+
+        throw new \RuntimeException(
+            "No active review form titled '{$title}' in context {$contextId}. "
+            . (empty($availableTitles)
+                ? 'The context has no active review forms — seed one before referencing it.'
+                : 'Active review forms: ' . implode(' | ', $availableTitles))
+        );
     }
 
     private function resolveRecommendationId(string $recommendation, int $contextId): int

@@ -179,15 +179,19 @@ test.describe('Submission wizard — language change', () => {
 			await wizard.continueStep();
 			await wizard.clearTitle('fr_CA');
 
-			// Walk through Contributors + For the Editors to Review.
-			// The wizard's required-field validation runs only when
-			// Continue lands on Review; intermediate steps don't gate
-			// missing fr_CA title. (Row #10 already exercises EN-side
-			// validation; this test's value is the locale-prefixed
-			// review-panel headings.)
+			// Walk through Contributors + For the Editors + Reviewer
+			// Suggestions to Review. The wizard's required-field validation
+			// runs only when Continue lands on Review; intermediate steps
+			// don't gate missing fr_CA title. (Row #10 already exercises
+			// EN-side validation; this test's value is the locale-prefixed
+			// review-panel headings.) The Reviewer Suggestions step exists
+			// because reviewerSuggestionEnabled is on for the bootstrapped
+			// journal (playwright/fixtures/bootstrap.js); suggestions are
+			// optional, so it advances freely.
 			await wizard.continueStep(); // Details → Contributors
 			await wizard.continueStep(); // Contributors → For the Editors
-			await wizard.continueStep(); // For the Editors → Review
+			await wizard.continueStep(); // For the Editors → Reviewer Suggestions
+			await wizard.continueStep(); // Reviewer Suggestions → Review
 
 			// Top-level errors banner mirrors row #10's EN flow but in
 			// the same UI locale (English; UI locale wasn't switched —

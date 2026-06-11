@@ -18,6 +18,9 @@
  * Optional spec fields handled here:
  *   - commentsForEditor: copied to the submission's commentsForTheEditors
  *     setting (the field key the wizard's "For the Editors" step writes).
+ *   - reviewerSuggestions: reviewer_suggestions rows as created by the
+ *     wizard's ReviewerSuggestionsListPanel (one REST POST per suggestion
+ *     while the wizard is in progress, before Submit).
  *   - submitted: when true (default-true if the spec has decisions or
  *     reviewRounds), Repo::submission()->submit() is invoked to mirror
  *     the wizard's final Submit click — this fires SubmissionSubmitted
@@ -38,6 +41,7 @@ use PKP\author\contributorRole\ContributorRole;
 use PKP\author\contributorRole\ContributorRoleIdentifier;
 use PKP\author\contributorRole\ContributorType;
 use PKP\core\Core;
+use PKP\submission\reviewer\suggestion\ReviewerSuggestion;
 use PKP\submissionFile\SubmissionFile;
 use PKP\testing\scenario\GenreLookup;
 use PKP\testing\scenario\ScenarioContext;
@@ -159,6 +163,19 @@ class SubmissionBuilderProcessor implements ScenarioProcessor
             $submission = Repo::submission()->get($submissionId);
         }
 
+        // reviewerSuggestions: the rows the wizard's
+        // ReviewerSuggestionsListPanel creates as the author adds
+        // suggestions during the wizard (i.e. before Submit), one POST per
+        // suggestion to /submissions/{id}/reviewers/suggestions.
+        if (!empty($spec['reviewerSuggestions'])) {
+            $this->seedReviewerSuggestions(
+                $spec['reviewerSuggestions'],
+                $submissionId,
+                $submitter->getId(),
+                $locale
+            );
+        }
+
         // submit() converts a wizard-in-progress submission into a
         // submitted one: clears submissionProgress, fires
         // SubmissionSubmitted, and creates the cover-note discussion when
@@ -177,6 +194,46 @@ class SubmissionBuilderProcessor implements ScenarioProcessor
         $ctx->recordSubmission($submissionId, $publicationId, $context->getId());
 
         return [];
+    }
+
+    /**
+     * Write reviewer_suggestions (+ settings) rows exactly as the wizard's
+     * suggestion endpoint does: ReviewerSuggestionController::add()
+     * (lib/pkp/api/v1/reviewers/suggestions/ReviewerSuggestionController.php:155-166)
+     * calls ReviewerSuggestion::create($validateds) where the validated set
+     * is submissionId + suggestingUserId (merged from the wizard user in
+     * AddReviewerSuggestion::prepareForValidation(), lines 105-111) +
+     * email + the multilingual settings givenName / familyName /
+     * affiliation / suggestionReason keyed by locale.
+     *
+     * The spec accepts plain strings; they're wrapped under the
+     * submission's locale, matching what the wizard form posts for a
+     * single-locale entry.
+     */
+    private function seedReviewerSuggestions(
+        array $suggestionSpecs,
+        int $submissionId,
+        int $suggestingUserId,
+        string $locale
+    ): void {
+        foreach ($suggestionSpecs as $suggestionSpec) {
+            $createParams = [
+                'submissionId' => $submissionId,
+                'suggestingUserId' => $suggestingUserId,
+                'givenName' => [$locale => $suggestionSpec['givenName']],
+                'familyName' => [$locale => $suggestionSpec['familyName']],
+                'email' => $suggestionSpec['email'],
+            ];
+            // Production validation requires these too; the scenario spec
+            // keeps them optional for fixture brevity — omitted values
+            // simply write no settings row.
+            foreach (['affiliation', 'suggestionReason'] as $field) {
+                if (isset($suggestionSpec[$field])) {
+                    $createParams[$field] = [$locale => $suggestionSpec[$field]];
+                }
+            }
+            ReviewerSuggestion::create($createParams);
+        }
     }
 
     /**

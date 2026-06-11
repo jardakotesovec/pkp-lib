@@ -91,8 +91,24 @@ class ContextBuilderProcessor implements ScenarioProcessor
         // creation time (e.g. submitWithCategories to enable the wizard
         // Categories field without flipping it through the settings UI
         // mid-test; DOI prefix + toggles to skip the multi-tab DOI
-        // Distribution settings UI).
-        foreach (['submitWithCategories', 'enableDois', 'doiPrefix', 'doiVersioning', 'registrationAgency', 'onlineIssn', 'printIssn', 'enablePublicComments', 'enableAnnouncements', 'publishingMode'] as $optionalScalar) {
+        // Distribution settings UI). Every key here must also exist in
+        // schema/context.json and in the app/pkp context entity schema
+        // (PKPContextService::add validates + persists from there) —
+        // see docs/e2e/.audit-fragments/context-settings-sync.md.
+        foreach ([
+            // Distribution / front-end toggles
+            'submitWithCategories', 'enableDois', 'doiPrefix', 'doiVersioning',
+            'doiCreationTime', 'registrationAgency', 'onlineIssn', 'printIssn',
+            'enablePublicComments', 'enableAnnouncements', 'publishingMode',
+            // Submission-wizard metadata modes (PKPMetadataSettingsForm):
+            // 0 | 'enable' | 'request' | 'require'
+            'keywords', 'citations',
+            // Review setup (PKPReviewSetupForm)
+            'reviewerSuggestionEnabled', 'defaultReviewMode',
+            'numWeeksPerResponse', 'numWeeksPerReview',
+            'numDaysBeforeReviewResponseReminderDue', 'numDaysAfterReviewResponseReminderDue',
+            'numDaysBeforeReviewSubmitReminderDue', 'numDaysAfterReviewSubmitReminderDue',
+        ] as $optionalScalar) {
             if (array_key_exists($optionalScalar, $spec)) {
                 $data[$optionalScalar] = $spec[$optionalScalar];
             }
