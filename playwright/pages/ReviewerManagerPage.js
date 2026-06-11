@@ -245,6 +245,28 @@ exports.ReviewerManagerPage = class ReviewerManagerPage extends BasePage {
 	}
 
 	/**
+	 * Open the Review Details modal for a reviewer's row (More Actions →
+	 * Review Details). Unlike openRowAction, the resulting legacy
+	 * readReview modal's accessible name embeds the submission title
+	 * ("Review Details: {title}"), so the dialog lookup is anchored on
+	 * the prefix instead of an exact match.
+	 *
+	 * @param {string} reviewerFullName
+	 * @returns {Promise<import('@playwright/test').Locator>} the modal
+	 */
+	async openReviewDetails(reviewerFullName) {
+		await this.row(reviewerFullName)
+			.getByRole('button', {name: 'More Actions'})
+			.click();
+		await this.page
+			.getByRole('menuitem', {name: 'Review Details', exact: true})
+			.click();
+		const modal = this.page.getByRole('dialog', {name: /^Review Details/});
+		await expect(modal).toBeVisible({timeout: 15_000});
+		return modal;
+	}
+
+	/**
 	 * Resolve a reviewer-action side-modal by its accessible name. The
 	 * side-modal wrapper can report `visibility: hidden` during the
 	 * open transition, so callers should anchor readiness on an inner
