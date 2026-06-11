@@ -12,10 +12,23 @@
  *      existing config.test.inc.php once so it gets re-seeded.)
  *   2. Copy config.TEMPLATE.inc.php → config.test.inc.php.
  *   3. Apply line-anchored substitutions: 4 to point [email] at Mailpit
- *      (127.0.0.1:1025) so the pkpMail fixture sees test-action mail,
- *      plus 1 setting api_key_secret to a fixed test-only value — the
+ *      (127.0.0.1:1025) so the pkpMail fixture sees test-action mail;
+ *      1 setting api_key_secret to a fixed test-only value — the
  *      template ships it empty, and without it API-key Bearer tokens
- *      can't be signed/verified.
+ *      can't be signed/verified; 1 turning the web-request scheduled
+ *      task runner OFF (globally-scanning tasks belong to the serial
+ *      project, triggered explicitly — charter principle 9; a reminder
+ *      task firing mid-parallel-run pollutes Mailpit); and 2 pointing
+ *      [proxy] at a dead local port so every server-side outbound HTTP
+ *      call (ORCID/Crossref deposit jobs, version checks, registry
+ *      downloads) fails in milliseconds instead of hanging — a hung
+ *      Guzzle call inside the end-of-request job runner blows the
+ *      job_runner_max_execution_time fatal, which on single-process
+ *      `php -S` KILLS THE SERVER and fails every test routed to that
+ *      port from then on (observed 2026-06-11: 3 of 5 servers died
+ *      within 13s on hung ORCID-job calls; ~190 ECONNREFUSED failures).
+ *      The charter forbids live-API dependence, so no test loses
+ *      anything; browser-side traffic never goes through PHP's proxy.
  *   4. Verify each substitution actually landed; abort loudly if any
  *      didn't (config.TEMPLATE.inc.php drifted) so the failure is
  *      "webServer didn't start" instead of "Mailpit asserts time out
@@ -50,6 +63,21 @@ const SUBSTITUTIONS = [
 		from: /^api_key_secret = ""$/m,
 		to: 'api_key_secret = "playwright-api-key-secret-not-a-secret"',
 	},
+	// Web-request scheduled-task runner OFF: scheduled tasks run only when
+	// a serial spec triggers them explicitly (php lib/pkp/tools/scheduler.php).
+	{from: /^task_runner = On$/m, to: 'task_runner = Off'},
+	// Egress guard: PKPApplication::getHttpClient() reads [proxy], so a
+	// dead proxy makes all server-side outbound HTTP fail fast (nothing
+	// listens on port 9) instead of hanging until the job-runner
+	// max_execution_time fatal kills the single-process PHP server.
+	{
+		from: /^; http_proxy = "http:\/\/username:password@192\.168\.1\.1:8080"$/m,
+		to: 'http_proxy = "http://127.0.0.1:9"',
+	},
+	{
+		from: /^; https_proxy = "https:\/\/username:password@192\.168\.1\.1:8080"$/m,
+		to: 'https_proxy = "http://127.0.0.1:9"',
+	},
 ];
 
 const REQUIRED_PATTERNS_AFTER = [
@@ -58,6 +86,9 @@ const REQUIRED_PATTERNS_AFTER = [
 	/^smtp_server = 127\.0\.0\.1$/m,
 	/^smtp_port = 1025$/m,
 	/^api_key_secret = "playwright-api-key-secret-not-a-secret"$/m,
+	/^task_runner = Off$/m,
+	/^http_proxy = "http:\/\/127\.0\.0\.1:9"$/m,
+	/^https_proxy = "http:\/\/127\.0\.0\.1:9"$/m,
 ];
 
 function seedTestConfig() {

@@ -59,6 +59,18 @@ const phpProc = spawn('php', phpArgs, {
 	env: {
 		...process.env,
 		APPLICATION_ENV: 'test',
+		// Offline resolution for remotely-hosted DTDs: the test config
+		// firewalls all server-side egress (dead [proxy], which PKP also
+		// wires into libxml's stream context), so filters that validate
+		// against remote DTDs (PubMed export) resolve them from the
+		// committed mirror via libxml2's XML-catalog support instead.
+		XML_CATALOG_FILES: path.resolve(
+			__dirname,
+			'..',
+			'fixtures',
+			'dtd',
+			'catalog.xml',
+		),
 	},
 });
 

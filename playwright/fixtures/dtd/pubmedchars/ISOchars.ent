@@ -1,0 +1,145 @@
+<!-- 2018-02-08
+		
+		This character set includes all of the named character entities
+     that were defined in the ISO*.ent files referenced by the 
+	  PubMed.dtd that are not defined in the MathML characters. 
+-->
+
+<!ENTITY Aacgr  "&#x386;" ><!--=capital Alpha, accent, Greek-->
+<!ENTITY Agr     "&#913;" ><!--capital Alpha, Greek, U0391 -->
+<!ENTITY Bgr     "&#914;" ><!--capital Beta, Greek, U0392 -->
+<!ENTITY Dgr     "&#916;" ><!--capital Delta, Greek, U0394 -->
+<!ENTITY EEacgr "&#x389;" ><!--=capital Eta, accent, Greek-->
+<!ENTITY EEgr    "&#919;" ><!--capital Eta, Greek, U0397 -->
+<!ENTITY Eacgr  "&#x388;" ><!--=capital Epsilon, accent, Greek-->
+<!ENTITY Egr     "&#917;" ><!--capital Epsilon, Greek, U0395 -->
+<!ENTITY Ggr     "&#915;" ><!--capital Gamma, Greek, U0393 -->
+<!ENTITY Iacgr  "&#x38A;" ><!--=capital Iota, accent, Greek-->
+<!ENTITY Idigr  "&#x3AA;" ><!--=capital Iota, dieresis, Greek-->
+<!ENTITY Igr     "&#921;" ><!--capital Iota, Greek, U0399 -->
+<!ENTITY KHgr    "&#935;" ><!--capital Chi, Greek, U03A7 -->
+<!ENTITY Kgr     "&#922;" ><!--capital Kappa, Greek, U039A -->
+<!ENTITY Lgr     "&#923;" ><!--capital Lambda, Greek, U039B -->
+<!ENTITY Lslash "&#x141;" ><!--=capital L, stroke-->
+<!ENTITY Mgr     "&#924;" ><!--capital Mu, Greek, U039C -->
+<!ENTITY Ngr     "&#925;" ><!--capital Nu, Greek, U039D -->
+<!ENTITY OHacgr "&#x38F;" ><!--=capital Omega, accent, Greek-->  
+<!ENTITY OHgr    "&#937;" ><!--capital Omega, Greek, U03A9 -->
+<!ENTITY Oacgr  "&#x38C;" ><!--=capital Omicron, accent, Greek-->
+<!ENTITY Ogr     "&#927;" ><!--capital Omicron, Greek, U039F -->
+<!ENTITY PHgr    "&#934;" ><!--capital Phi, Greek, U03A6 -->
+<!ENTITY PSgr    "&#936;" ><!--capital Psi, Greek, U03A8 -->
+<!ENTITY Pgr     "&#928;" ><!--capital Pi, Greek, U03A0 -->
+<!ENTITY Rgr     "&#929;" ><!--capital Rho, Greek, U03A1 -->
+<!ENTITY Sgr     "&#931;" ><!--capital Sigma, Greek, U03A3 -->
+<!ENTITY THgr    "&#920;" ><!--capital Theta, Greek, U0398 -->
+<!ENTITY Tgr     "&#932;" ><!--capital Tau, Greek, U03A4 -->
+<!ENTITY Uacgr  "&#x38E;" ><!--=capital Upsilon, accent, Greek-->
+<!ENTITY Udiagr "&#x3AB;&#x30D;" ><!--=capital Upsilon, dieresis, accent, Greek-->
+<!ENTITY Udigr  "&#x3AB;" ><!--=capital Upsilon, dieresis, Greek-->
+<!ENTITY Ugr     "&#933;" ><!--capital Upsilon, Greek, U03A5 -->
+<!ENTITY Xgr     "&#926;" ><!--capital Xi, Greek, U039E -->
+<!ENTITY Zgr     "&#918;" ><!--capital Zeta, Greek, U0396 -->
+<!ENTITY aacgr  "&#x3AC;" ><!--=small alpha, accent, Greek-->
+<!ENTITY agr     "&#945;" ><!--small alpha, Greek, U03B1 -->
+<!ENTITY ang90  "&#x221F;" ><!--=right (90 degree) angle-->
+<!ENTITY b.Delta    "&#x394;" ><!--=capital Delta, Greek-->
+<!ENTITY b.Gamma    "&#x393;" ><!--=capital Gamma, Greek-->
+<!ENTITY b.Lambda   "&#x39B;" ><!--=capital Lambda, Greek-->
+<!ENTITY b.Omega    "&#x3A9;" ><!--=capital Omega, Greek-->
+<!ENTITY b.Phi      "&#x3A6;" ><!--=capital Phi, Greek-->
+<!ENTITY b.Pi       "&#x3A0;" ><!--=capital Pi, Greek-->
+<!ENTITY b.Psi      "&#x3A8;" ><!--=capital Psi, Greek-->
+<!ENTITY b.Sigma    "&#x3A3;" ><!--=capital Sigma, Greek-->
+<!ENTITY b.Theta    "&#x398;" ><!--=capital Theta, Greek-->
+<!ENTITY b.Upsi     "&#x3A5;" ><!--=capital Upsilon, Greek-->
+<!ENTITY b.Xi       "&#x39E;" ><!--=capital Xi, Greek-->
+<!ENTITY b.alpha    "&#x3B1;" ><!--=small alpha, Greek-->
+<!ENTITY b.beta     "&#x3B2;" ><!--=small beta, Greek-->
+<!ENTITY b.chi      "&#x3C7;" ><!--=small chi, Greek-->
+<!ENTITY b.delta    "&#x3B4;" ><!--=small delta, Greek-->
+<!ENTITY b.epsi     "&#x3B5;" ><!--=small epsilon, Greek -->
+<!ENTITY b.epsis    "&#x1B8;" ><!--/straightepsilon ?-->
+<!ENTITY b.epsiv    "&#x2107;" ><!--/varepsilon ?-->
+<!ENTITY b.eta      "&#x3B7;" ><!--=small eta, Greek-->
+<!ENTITY b.gamma    "&#x3B3;" ><!--=small gamma, Greek-->
+<!ENTITY b.gammad   "&#x3DC;" ><!--/digamma-->
+<!ENTITY b.iota     "&#x3B9;" ><!--=small iota, Greek-->
+<!ENTITY b.kappa    "&#x3BA;" ><!--=small kappa, Greek-->
+<!ENTITY b.kappav   "&#x3F0;" ><!--/varkappa-->
+<!ENTITY b.lambda   "&#x3BB;" ><!--=small lambda, Greek-->
+<!ENTITY b.mu       "&#x3BC;" ><!--=small mu, Greek-->
+<!ENTITY b.nu       "&#x3BD;" ><!--=small nu, Greek-->
+<!ENTITY b.omega    "&#x3C9;" ><!--=small omega, Greek-->
+<!ENTITY b.phis     "&#x3C6;" ><!--/straightphi - straight phi-->
+<!ENTITY b.phiv     "&#x3D5;" ><!--/varphi - curly or open phi-->
+<!ENTITY b.pi       "&#x3C0;" ><!--=small pi, Greek-->
+<!ENTITY b.piv      "&#x3D6;" ><!--/varpi-->
+<!ENTITY bepsi	"&#x220D;"> <!-- SMALL CONTAINS AS MEMBER -->
+<!ENTITY b.psi      "&#x3C8;" ><!--=small psi, Greek-->
+<!ENTITY b.rho      "&#x3c1;" ><!--=small rho, Greek-->
+<!ENTITY b.rhov     "&#x3F1;" ><!--/varrho-->
+<!ENTITY b.sigma    "&#x3C3;" ><!--=small sigma, Greek-->
+<!ENTITY b.sigmav   "&#x3C2;" ><!--/varsigma-->
+<!ENTITY b.tau      "&#x3C4;" ><!--=small tau, Greek-->
+<!ENTITY b.thetas   "&#x3B8;" ><!--straight theta-->
+<!ENTITY b.thetav   "&#x3D1;" ><!--/vartheta - curly or open theta-->
+<!ENTITY b.upsi     "&#x3C5;" ><!--=small upsilon, Greek-->
+<!ENTITY b.xi       "&#x3BE;" ><!--=small xi, Greek-->
+<!ENTITY b.zeta     "&#x3B6;" ><!--=small zeta, Greek-->
+<!ENTITY bgr     "&#946;" ><!--small beta, Greek, U03B2 -->
+<!ENTITY cupre	"&#x227C;"> <!--  -->
+<!ENTITY darr2	"&#x21CA;"> <!-- DOWNWARDS PAIRED ARROWS -->
+<!ENTITY dgr     "&#948;" ><!--small delta, Greek, U03B4 -->
+<!ENTITY dlarr	"&#x2199;"> <!-- SOUTH WEST ARROW -->
+<!ENTITY drarr	"&#x2198;"> <!-- SOUTH EAST ARROW -->
+<!ENTITY eacgr  "&#x3AD;" ><!--=small epsilon, accent, Greek-->
+<!ENTITY eeacgr "&#x3AE;" ><!--=small eta, accent, Greek-->
+<!ENTITY eegr    "&#951;" ><!--small eta, Greek, U03B7 -->
+<!ENTITY egr     "&#949;" ><!--small epsilon, Greek, U03B5 -->
+<!ENTITY epsis    "&#x1B8;"> <!--/straightepsilon ?-->
+<!ENTITY euro	"&#x20AC;"> <!-- EURO SIGN -->
+<!ENTITY fjlig  "fj" ><!--small fj ligature-->
+<!ENTITY ggr     "&#947;" ><!--small gamma, Greek, U03B3 -->
+<!ENTITY gsdot	"&#x22D7;"> <!--  -->
+<!ENTITY iacgr  "&#x3AF;" ><!--=small iota, accent, Greek-->
+<!ENTITY idiagr "&#x390;" ><!--=small iota, dieresis, accent, Greek-->
+<!ENTITY idigr  "&#x3CA;" ><!--=small iota, dieresis, Greek-->
+<!ENTITY igr     "&#953;" ><!--small iota, Greek, U03B9 -->
+<!ENTITY kgr     "&#954;" ><!--small kappa, Greek, U03BA -->
+<!ENTITY khgr    "&#967;" ><!--small chi, Greek, U03C7 -->
+<!ENTITY larr2	"&#x21C7;"> <!-- LEFTWARDS PAIRED ARROWS -->
+<!ENTITY ldot	"&#x22D6;"> <!--  -->
+<!ENTITY lgr     "&#955;" ><!--small lambda, Greek, U03BB -->
+<!ENTITY lrarr2	"&#x21C6;"> <!-- LEFTWARDS ARROW OVER RIGHTWARDS ARROW -->
+<!ENTITY lrhar2	"&#x21CB;"> <!-- LEFTWARDS HARPOON OVER RIGHTWARDS HARPOON -->
+<!ENTITY lslash "&#x142;" ><!--=small l, stroke-->
+<!ENTITY mgr     "&#956;" ><!--small mu, Greek, U03BC -->
+<!ENTITY ngr     "&#957;" ><!--small nu, Greek, U03BD -->
+<!ENTITY oacgr  "&#x3CC;" ><!--=small omicron, accent, Greek-->
+<!ENTITY ogr     "&#959;" ><!--small omicron, Greek, U03BF -->
+<!ENTITY ohacgr "&#x3CE;" ><!--=small omega, accent, Greek-->
+<!ENTITY ohgr    "&#969;" ><!--small omega, Greek, U03C9 -->
+<!ENTITY pgr     "&#960;" ><!--small pi, Greek, U03C0 -->
+<!ENTITY phgr    "&#966;" ><!--small phi, Greek, U03C6 -->
+<!ENTITY phis     "&#x3C6;"> <!--/straightphi - straight phi-->
+<!ENTITY psgr    "&#968;" ><!--small psi, Greek, U03C8 -->
+<!ENTITY rarr2	"&#x21C9;"> <!-- RIGHTWARDS PAIRED ARROWS -->
+<!ENTITY rgr     "&#961;" ><!--small rho, Greek, U03C1 -->
+<!ENTITY rlarr2	"&#x21C4;"> <!-- RIGHTWARDS ARROW OVER LEFTWARDS ARROW -->
+<!ENTITY rlhar2	"&#x21CC;"> <!-- RIGHTWARDS HARPOON OVER LEFTWARDS HARPOON -->
+<!ENTITY samalg	"&#x2210;"> <!--  -->
+<!ENTITY sbsol	"&#xFE68;"> <!-- SMALL REVERSE SOLIDUS -->
+<!ENTITY sfgr    "&#962;" ><!--final small sigma, Greek, U03C2 --> 
+<!ENTITY sgr     "&#963;" ><!--small sigma, Greek, U03C3 -->
+<!ENTITY tgr     "&#964;" ><!--small tau, Greek, U03C4 -->
+<!ENTITY thetas   "&#x3B8;"> <!--straight theta-->
+<!ENTITY thgr    "&#952;" ><!--small theta, Greek, U03B8 -->
+<!ENTITY uacgr  "&#x3CD;" ><!--=small upsilon, accent, Greek-->
+<!ENTITY uarr2	"&#x21C8;"> <!-- UPWARDS PAIRED ARROWS -->
+<!ENTITY udiagr "&#x3B0;" ><!--=small upsilon, dieresis, accent, Greek-->
+<!ENTITY udigr  "&#x3CB;" ><!--=small upsilon, dieresis, Greek-->
+<!ENTITY ugr     "&#965;" ><!--small upsilon, Greek, U03C5 -->
+<!ENTITY vprime	"&#x2032;"> <!-- PRIME -->
+<!ENTITY xgr     "&#958;" ><!--small xi, Greek, U03BE -->
+<!ENTITY zgr     "&#950;" ><!--small zeta, Greek, U03B6 -->

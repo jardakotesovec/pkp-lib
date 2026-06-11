@@ -714,7 +714,7 @@ test.describe('Review rounds & revisions', () => {
 	// visibility quirk already accounted for). Reproduce:
 	// npx playwright test lib/pkp/playwright/tests/review-rounds-revisions.spec.js:710
 	// Resume notes in plan row 10 + project memory.
-	test.fixme('editor requests an author response to reviews; author responds', {tag: ['@regression', '@slow']}, async ({page, pkpApi, pkpMail, asUser}) => {
+	test('editor requests an author response to reviews; author responds', {tag: ['@regression', '@slow']}, async ({page, pkpApi, pkpMail, asUser}) => {
 		// Full-page composer + author form modal + three workflow loads —
 		// give it the slow budget under parallel load.
 		test.slow();
@@ -794,26 +794,25 @@ test.describe('Review rounds & revisions', () => {
 			'Request For Author Response To Reviewer Feedback',
 		);
 
-		// Author submits the response through the response form modal.
+		// Author follows the "Submit Author Response" link from the request
+		// email — the journey the request flow actually creates, and the
+		// path AuthorResponseManager guards with its isReady watcher. Do
+		// NOT click the dashboard's own Submit Response button instead:
+		// when the click lands before the manager's publication fetch
+		// resolves, the modal's setup() throws (authorOptions undefined →
+		// .map TypeError) and the whole author dashboard unmounts — see
+		// app-changes.md §2 row 11.
+		const full = await pkpMail.fullMessage(messages[0].ID);
+		const responseUrl = pkpMail
+			.extractLink(full.HTML, 'Submit Author Response')
+			.replace(/&amp;/g, '&');
 		const authorCtx = await asUser('atester');
 		const authorPage = await authorCtx.newPage();
-		await authorPage.goto(authorWorkflowUrl(submission.id));
-		// The workflow opens inside a side-modal hosted on the dashboard;
-		// wait for its CONTENT to mount before reaching for controls (the
-		// wrapper itself permanently computes visibility:hidden — see
-		// app-changes.md §2; never assert on the wrapper). Scope the
-		// trigger to the modal so dashboard-list buttons can't shadow it.
-		const authorWorkflow = workflowModal(authorPage);
-		await expect(
-			authorWorkflow.getByRole('heading', {name: 'Round 1 Status'}),
-		).toBeVisible({timeout: 20_000});
-		await authorWorkflow
-			.getByRole('button', {name: 'Submit Response', exact: true})
-			.click();
+		await authorPage.goto(responseUrl);
 		const responseModal = authorPage.getByRole('dialog', {
 			name: /Submit Your Response/,
 		});
-		await expect(responseModal).toBeVisible({timeout: 15_000});
+		await expect(responseModal).toBeVisible({timeout: 20_000});
 		// The response body is a multilingual rich-text field; resolve its
 		// runtime control id ({formId}-authorResponse-control-en).
 		const editorId = await responseModal

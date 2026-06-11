@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<!--
+  libxml XML catalog for offline DTD resolution in the Playwright suite.
+
+  The test PHP servers run with all outbound HTTP firewalled (a dead
+  [proxy] in config.test.inc.php — see seed-test-config.js), which PKP
+  also wires into libxml's stream context. Filters that validate their
+  output against remotely-hosted DTDs (PubMed export) would otherwise
+  fail on every run. This catalog maps those DTDs to the local copies
+  committed beside it; start-php-server.js exports XML_CATALOG_FILES
+  pointing here, which libxml2 consults before any network fetch.
+
+  Mirrored 2026-06-11 from https://dtd.nlm.nih.gov/ncbi/pubmed/in/
+  (PubMed.dtd 2.8 + its two referenced modules). NLM DTDs are works of
+  the US government (public domain). Re-mirror if the app's DOCTYPE
+  reference in plugins/importexport/pubmed ever changes version.
+-->
+<catalog xmlns="urn:oasis:names:tc:entity:xmlns:xml:catalog">
+  <public publicId="-//NLM//DTD PubMed 2.8//EN" uri="PubMed.dtd"/>
+  <system systemId="https://dtd.nlm.nih.gov/ncbi/pubmed/in/PubMed.dtd" uri="PubMed.dtd"/>
+</catalog>
