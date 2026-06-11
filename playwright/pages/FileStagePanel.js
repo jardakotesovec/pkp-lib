@@ -28,8 +28,16 @@ const {waitForJQueryIdle} = require('../support/jquery.js');
  * PkpTable root (the table's parent div, which also contains the
  * header bar with the action buttons and the bottom controls).
  *
+ * Per-row actions live behind the headlessui "More Actions" ellipsis
+ * menu (items render as role=menuitem): "Update File Details" opens the
+ * legacy editMetadata modal ("Edit a file") hosting the Vue
+ * FileMetadataForm + the Dependent Files grid (html/xml mimetypes only);
+ * "More Information" opens the File Information Center; "Delete"
+ * confirms through a PkpDialog before POSTing deleteFile.
+ *
  * Shared across OJS/OMP/OPS — FileManager and the legacy grid handlers
- * live in pkp-lib. Owned by the copyediting/production-stage specs.
+ * live in pkp-lib. Owned by the copyediting/production-stage and
+ * submission-files specs.
  */
 exports.FileStagePanel = class FileStagePanel extends BasePage {
 	/**
@@ -74,6 +82,130 @@ exports.FileStagePanel = class FileStagePanel extends BasePage {
 	 */
 	fileLink(name) {
 		return this.row(name).getByRole('link', {name});
+	}
+
+	/**
+	 * Open a row's headlessui "More Actions" ellipsis menu. The trigger
+	 * button's accessible name is the sr-only "More Actions" label; the
+	 * items render as role=menuitem (headlessui portals them outside the
+	 * row, so item lookups are page-scoped).
+	 *
+	 * @param {string} rowText  text identifying the row (file name)
+	 */
+	async openRowMenu(rowText) {
+		await this.row(rowText)
+			.getByRole('button', {name: /More Actions/i})
+			.click();
+	}
+
+	/**
+	 * Pick an action from a row's More Actions menu. Labels come from
+	 * useFileManagerConfig#getItemActions: "Update File Details" (edit),
+	 * "More Information" (file information center), "Delete".
+	 *
+	 * @param {string} rowText
+	 * @param {string} itemLabel
+	 */
+	async clickRowAction(rowText, itemLabel) {
+		await this.openRowMenu(rowText);
+		await this.page
+			.getByRole('menuitem', {name: itemLabel, exact: true})
+			.click();
+	}
+
+	/**
+	 * Delete a file row via More Actions → Delete and confirm the
+	 * PkpDialog ("Are you sure you wish to delete this item?…" with
+	 * OK/Cancel). Waits for the row to leave the panel (the delete's
+	 * finishedCallback refetches the file list).
+	 *
+	 * @param {string} name  file name identifying the row
+	 */
+	async deleteFile(name) {
+		await this.clickRowAction(name, 'Delete');
+		const dialog = this.page
+			.locator('[data-cy="dialog"]')
+			.filter({hasText: 'Are you sure you wish to delete this item'})
+			.first();
+		await expect(dialog).toBeVisible({timeout: 10_000});
+		await dialog.getByRole('button', {name: 'OK', exact: true}).click();
+		await expect(dialog).toBeHidden({timeout: 15_000});
+		await expect(this.row(name)).toHaveCount(0, {timeout: 20_000});
+	}
+
+	/**
+	 * Open the edit-metadata modal (More Actions → "Update File Details")
+	 * — a legacy side modal titled "Edit a file" (grid.action.editFile)
+	 * hosting the Vue FileMetadataForm (multilingual `name` field with
+	 * control id `submissionFileMetadataForm-name-control-{locale}`,
+	 * Save/Cancel buttons) and, for html/xml files, the Dependent Files
+	 * grid below it. Waits for the form to mount before returning.
+	 *
+	 * @param {string} name  file name identifying the row
+	 * @returns {Promise<import('@playwright/test').Locator>} the dialog
+	 */
+	async openEditModal(name) {
+		await this.clickRowAction(name, 'Update File Details');
+		const modal = this.page.getByRole('dialog', {name: 'Edit a file'}).first();
+		await expect(modal).toBeVisible({timeout: 15_000});
+		await expect(this.editModalNameInput(modal)).toBeVisible({
+			timeout: 15_000,
+		});
+		return modal;
+	}
+
+	/**
+	 * The primary-locale name input of the (open) edit-metadata modal.
+	 * Scoped to the modal: the same FileMetadataForm also mounts inside
+	 * the stacked upload wizard's metadata step, with identical ids.
+	 *
+	 * @param {import('@playwright/test').Locator} modal
+	 * @param {string} [locale='en']
+	 */
+	editModalNameInput(modal, locale = 'en') {
+		return modal.locator(`input[id$="-name-control-${locale}"]`);
+	}
+
+	/**
+	 * Save the (open) edit-metadata modal and wait for it to close. The
+	 * Vue form's @success handler triggers `formSubmitted` on the legacy
+	 * wrapper, which closes the modal and refetches the panel.
+	 *
+	 * @param {import('@playwright/test').Locator} modal
+	 */
+	async saveEditModal(modal) {
+		await modal.getByRole('button', {name: 'Save', exact: true}).click();
+		await expect(modal).toBeHidden({timeout: 20_000});
+		await waitForJQueryIdle(this.page);
+	}
+
+	/**
+	 * Open the File Information Center (More Actions → "More
+	 * Information") — a legacy modal titled "Information Center:
+	 * {fileName}" with jQuery-UI History/Notes tabs.
+	 *
+	 * @param {string} name  file name identifying the row
+	 * @returns {Promise<import('@playwright/test').Locator>} the dialog
+	 */
+	async openInformationCenter(name) {
+		await this.clickRowAction(name, 'More Information');
+		const modal = this.page
+			.getByRole('dialog', {name: /Information Center/})
+			.first();
+		await expect(modal).toBeVisible({timeout: 15_000});
+		await waitForJQueryIdle(this.page);
+		return modal;
+	}
+
+	/**
+	 * Close any side modal via its header close button (sr-only
+	 * "Close" label).
+	 *
+	 * @param {import('@playwright/test').Locator} modal
+	 */
+	async closeModal(modal) {
+		await modal.getByRole('button', {name: 'Close', exact: true}).first().click();
+		await expect(modal).toBeHidden({timeout: 15_000});
 	}
 
 	/**
@@ -190,13 +322,21 @@ exports.FileStagePanel = class FileStagePanel extends BasePage {
 	 *      `-name-control-en`; fbv ids are runtime-suffixed).
 	 *   3. confirm ("File Added") → Complete (same `#continueButton`).
 	 *
+	 * Revision mode (`reviseFileName`): when the panel already has files,
+	 * step 1 renders a `revisedFileId` select ("If you are uploading a
+	 * revision of an existing file…"). Picking a file there disables the
+	 * genre select (the revision inherits the genre), so genre selection
+	 * is skipped.
+	 *
 	 * @param {import('@playwright/test').Locator} wizard
 	 * @param {object} opts
 	 * @param {string} opts.filePath              absolute path to upload
 	 * @param {string} [opts.genreLabel='Article Text']
 	 * @param {string} [opts.displayName]         unique per-test file name
+	 * @param {string} [opts.reviseFileName]      existing file (option label)
+	 *   this upload revises; skips the genre pick
 	 */
-	async driveUploadWizard(wizard, {filePath, genreLabel = 'Article Text', displayName}) {
+	async driveUploadWizard(wizard, {filePath, genreLabel = 'Article Text', displayName, reviseFileName}) {
 		// The step-1 form loads via AJAX inside the dialog — wait for the
 		// genre select to render before touching anything. Skipping this
 		// races the load: setInputFiles would feed a file to an uploader
@@ -204,7 +344,13 @@ exports.FileStagePanel = class FileStagePanel extends BasePage {
 		// (Continue stays disabled forever).
 		const genreSelect = wizard.locator('select[name=genreId]');
 		await expect(genreSelect).toBeVisible({timeout: 15_000});
-		await genreSelect.selectOption({label: genreLabel});
+		if (reviseFileName) {
+			await wizard
+				.locator('select[name=revisedFileId]')
+				.selectOption({label: reviseFileName});
+		} else {
+			await genreSelect.selectOption({label: genreLabel});
+		}
 		await wizard.locator('input[type=file]').setInputFiles(filePath);
 		await expect(wizard.getByText('Change File')).toBeVisible({
 			timeout: 15_000,

@@ -160,6 +160,40 @@ exports.ReviewerSubmissionPage = class ReviewerSubmissionPage extends BasePage {
 	}
 
 	/**
+	 * Step 3 with a review form attached (reviewFormResponse.tpl
+	 * replaces the free-text comment editors): the response control for
+	 * a free-text element. Small text / text field render an input,
+	 * textarea elements a plain (non-TinyMCE) textarea — all share the
+	 * stable `name="reviewFormResponses[{elementId}]"`.
+	 *
+	 * @param {number} elementId review_form_elements id (from the
+	 *   context scenario's reviewForms[].elementIds)
+	 */
+	reviewFormTextResponse(elementId) {
+		return this.step3Form
+			.locator(
+				`textarea[name="reviewFormResponses[${elementId}]"], ` +
+					`input[name="reviewFormResponses[${elementId}]"]`,
+			)
+			.first();
+	}
+
+	/**
+	 * Step 3: pick a multiple-response option (radio buttons /
+	 * checkboxes). Option inputs keep the unsuffixed template id
+	 * `reviewFormResponses-{elementId}-{optionIndex}` with the option's
+	 * 0-based, spec-order index as both id segment and value.
+	 *
+	 * @param {number} elementId
+	 * @param {number} optionIndex
+	 */
+	async checkReviewFormOption(elementId, optionIndex) {
+		await this.step3Form
+			.locator(`input#reviewFormResponses-${elementId}-${optionIndex}`)
+			.check();
+	}
+
+	/**
 	 * Step 3: upload a review attachment through the legacy
 	 * FileUploadWizardHandler ("Upload File" link action on the
 	 * ReviewerReviewAttachmentsGridHandler grid). Review attachments
@@ -209,16 +243,28 @@ exports.ReviewerSubmissionPage = class ReviewerSubmissionPage extends BasePage {
 	}
 
 	/**
-	 * Step 3: "Submit Review" → PkpDialog confirm ("Are you sure…") → OK
-	 * → "Review Submitted" completion view.
+	 * Step 3: click "Submit Review" and OK the PkpDialog confirm — but
+	 * make no assumption about the outcome. Validation-gating tests use
+	 * this directly (the wizard stays on step 3 when a required review
+	 * form element is empty); `submitReview` layers the happy-path
+	 * completion assertion on top.
 	 */
-	async submitReview() {
+	async attemptSubmitReview() {
 		await this.step3Form
 			.getByRole('button', {name: /^Submit Review$/i})
 			.click();
 		const confirmDialog = this.page.locator('[data-cy="dialog"]');
 		await expect(confirmDialog).toBeVisible({timeout: 10_000});
 		await confirmDialog.getByRole('button', {name: 'OK', exact: true}).click();
+		await expect(confirmDialog).toBeHidden({timeout: 10_000});
+	}
+
+	/**
+	 * Step 3: "Submit Review" → PkpDialog confirm ("Are you sure…") → OK
+	 * → "Review Submitted" completion view.
+	 */
+	async submitReview() {
+		await this.attemptSubmitReview();
 		await expect(this.completedHeading).toBeVisible({timeout: 15_000});
 	}
 

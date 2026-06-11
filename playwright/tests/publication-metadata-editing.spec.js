@@ -33,6 +33,16 @@ const submissionInReview = require('../../../../playwright/fixtures/scenarios/su
  * of the per-panel save surfaces — by adding a new author and
  * verifying the publication's authors list round-trips via REST.
  *
+ * Plan ownership (N-test absorption rule — one row per test):
+ *   - test 1 (title/abstract/keywords) → editor-metadata-editing row 1
+ *   - test 2 (basic add contributor, en-only name) → contributors row 1
+ *   - test 3 (add contributor with multilingual name, country, role) →
+ *     editor-metadata-editing row 2. Differentiated from test 2 by the
+ *     FormLocales toggle + fr_CA name fields: it proves the contributor
+ *     form's multilingual plumbing end-to-end (visibleLocales starts as
+ *     [submission.locale]; the locale toggle exposes the fr_CA inputs).
+ *     Broader contributor CRUD/ordering stays with the contributors plan.
+ *
  * Galleys is exercised end-to-end by row #51 (galleys.spec.js). The
  * remaining two panels (Permissions, Issue) share the same `pkpForm`
  * save infrastructure as Title & Abstract / Contributors and aren't
@@ -240,6 +250,110 @@ test.describe('Publication metadata editing', () => {
 		expect(match, `author with email ${email} should exist`).toBeTruthy();
 		expect(match.givenName?.en).toBe(givenName);
 		expect(match.familyName?.en).toBe(familyName);
+	});
+
+	test('editor adds a contributor with a multilingual name via the Contributors panel', async ({
+		pkpApi,
+		asUser,
+	}) => {
+		// editor-metadata-editing plan row 2 — the single add-contributor
+		// flow with the full field set: multilingual (en + fr_CA) name,
+		// email, country, and the required contributor-role checkbox.
+		const tag = uniqueTag(test.info(), 'contrib2');
+		const spec = submissionInReview({tag});
+		const {submission} = await pkpApi.createSubmission(spec);
+
+		const suffix = tag.replace(/[^a-z0-9]/gi, '');
+		const givenNameEn = `Given${suffix}`;
+		const givenNameFr = `Prenom${suffix}`;
+		const familyNameEn = 'Contributorson';
+		const familyNameFr = 'Contributeur';
+		const email = `contrib2-${tag}@mailinator.com`.toLowerCase();
+
+		const ctx = await asUser('dbarnes');
+		const page = await ctx.newPage();
+		const workflow = new EditorialWorkflowPage(page);
+		await workflow.goto(submission.id);
+
+		const modal = page.locator('[data-cy="active-modal"]');
+		const sideNav = modal.locator('nav a');
+		await sideNav.getByText('Contributors', {exact: true}).first().click();
+		const contributorManager = page.locator('[data-cy="contributor-manager"]');
+		await expect(contributorManager).toBeVisible({timeout: 10_000});
+
+		await contributorManager
+			.getByRole('button', {name: 'Add Contributor', exact: true})
+			.click();
+
+		// ContributorsEditModal opens with the accessible name
+		// "Add Contributor" (grid.action.addContributor) — scope all the
+		// form interactions to it (the workflow page is a dialog too).
+		const addModal = page.getByRole('dialog', {name: 'Add Contributor'});
+		const emailInput = addModal.locator('input[name="email"]');
+		await expect(emailInput).toBeVisible({timeout: 15_000});
+
+		// Multilingual fields start with visibleLocales =
+		// [submission.locale] (useForm#setLocalesForSubmission). The
+		// FormLocales toggle ("French (Canada)") exposes the fr_CA inputs.
+		await addModal
+			.locator('.pkpFormLocales button')
+			.filter({hasText: 'French'})
+			.click();
+		const givenNameFrInput = addModal.locator('input[name="givenName-fr_CA"]');
+		await expect(givenNameFrInput).toBeVisible({timeout: 10_000});
+
+		await addModal.locator('input[name="givenName-en"]').fill(givenNameEn);
+		await givenNameFrInput.fill(givenNameFr);
+		await addModal.locator('input[name="familyName-en"]').fill(familyNameEn);
+		await addModal
+			.locator('input[name="familyName-fr_CA"]')
+			.fill(familyNameFr);
+		await emailInput.fill(email);
+		await addModal.locator('select[name="country"]').selectOption('IS');
+
+		// Required contributor-role checkbox (FieldOptions
+		// `contributorRoles[]`, renders only when the journal has more
+		// than one role — Author/Translator in the baseline journal).
+		await addModal
+			.locator('label', {hasText: 'Author'})
+			.locator('input[type="checkbox"]')
+			.first()
+			.check({force: true});
+
+		await Promise.all([
+			page.waitForResponse(
+				(res) =>
+					/\/api\/v1\/submissions\/\d+\/publications\/\d+\/contributors/.test(
+						res.url(),
+					) &&
+					res.request().method() === 'POST' &&
+					res.ok(),
+				{timeout: 20_000},
+			),
+			addModal.getByRole('button', {name: 'Save', exact: true}).click(),
+		]);
+
+		// Manager list refreshes with the new contributor row.
+		await expect(
+			contributorManager.getByText(`${givenNameEn} ${familyNameEn}`),
+		).toBeVisible({timeout: 15_000});
+
+		// REST round-trip: both locales of the name, the country, and the
+		// contributor role landed on the publication's author.
+		const pub = await fetchCurrentPublication(page, submission.id);
+		const match = (pub.authors || []).find(
+			(a) => (a.email || '').toLowerCase() === email,
+		);
+		expect(match, `author with email ${email} should exist`).toBeTruthy();
+		expect(match.givenName?.en).toBe(givenNameEn);
+		expect(match.givenName?.fr_CA).toBe(givenNameFr);
+		expect(match.familyName?.en).toBe(familyNameEn);
+		expect(match.familyName?.fr_CA).toBe(familyNameFr);
+		expect(match.country).toBe('IS');
+		expect(
+			JSON.stringify(match.contributorRoles ?? []),
+			'contributor role round-trips on the author payload',
+		).toContain('Author');
 	});
 });
 

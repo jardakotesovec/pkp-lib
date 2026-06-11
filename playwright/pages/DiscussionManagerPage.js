@@ -30,6 +30,11 @@ exports.DiscussionManagerPage = class DiscussionManagerPage extends BasePage {
 	constructor(page) {
 		super(page);
 		this.root = page.locator('[data-cy="discussion-manager"]');
+		// The manager's <h3> label is stage-specific ("Desk Review Tasks &
+		// Discussions", "Copyediting Tasks & Discussions", "Production
+		// Tasks & Discussions", …) — see getDiscussionTitleByStage in
+		// lib/ui-library/src/managers/DiscussionManager/useDiscussionManagerHelpers.js.
+		this.heading = this.root.getByRole('heading', {level: 3});
 	}
 
 	/**
@@ -48,6 +53,29 @@ exports.DiscussionManagerPage = class DiscussionManagerPage extends BasePage {
 
 	async expectVisible() {
 		await expect(this.root).toBeVisible();
+	}
+
+	/**
+	 * Assert the manager's stage-specific heading. Useful as the "right
+	 * stage panel rendered" gate when a test switches workflow stages.
+	 * @param {string} text  e.g. 'Production Tasks & Discussions'
+	 */
+	async expectHeading(text) {
+		await expect(this.heading).toHaveText(text, {timeout: 15_000});
+	}
+
+	/**
+	 * Assert the manager rendered with all three status groups EMPTY.
+	 * Each empty group renders a "No Items" placeholder row
+	 * (TableRowGroupWrapper falls back to grid.noItems once the list
+	 * fetch settles — while loading it shows "Loading" instead), so
+	 * three placeholders is a positive, fetch-bounded signal that this
+	 * stage's per-stage tasks list is empty.
+	 */
+	async expectAllGroupsEmpty() {
+		await expect(
+			this.root.getByText('No Items', {exact: true}),
+		).toHaveCount(DiscussionManagerPage.GROUPS.length, {timeout: 15_000});
 	}
 
 	async expectGroupsVisible() {

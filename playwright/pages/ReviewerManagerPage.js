@@ -245,6 +245,57 @@ exports.ReviewerManagerPage = class ReviewerManagerPage extends BasePage {
 	}
 
 	/**
+	 * The ReviewMethodIcons label inside a reviewer's row. The icons are
+	 * aria-hidden SVGs; the human-readable method name renders as an
+	 * sr-only span ("Open" / "Anonymous Reviewer/Disclosed Author" /
+	 * "Anonymous Reviewer/Anonymous Author" — see
+	 * ReviewMethodIcons.vue + editor.submissionReview.* locale keys), so
+	 * an exact text lookup scoped to the row is the stable hook.
+	 *
+	 * Works on both the editor view and the author-redacted view — the
+	 * Type column renders in both (useReviewerManagerConfig#getColumns).
+	 *
+	 * @param {string} reviewerFullName
+	 * @param {string} label  exact method label
+	 */
+	reviewTypeLabel(reviewerFullName, label) {
+		return this.row(reviewerFullName).getByText(label, {exact: true});
+	}
+
+	/**
+	 * Open the Edit Review modal for a reviewer's row (More Actions →
+	 * Edit) and resolve its legacy #editReviewForm. The form carries the
+	 * due-date datepicker pair (visible input + hidden Y-m-d altField,
+	 * BOTH named responseDueDate/reviewDueDate — use .last() for the
+	 * canonical altField), the reviewMethod radio trio (values 1
+	 * anonymous / 2 double-anonymous / 3 open) and the review-files
+	 * grid. Submit label is the fbvFormButtons default "OK".
+	 *
+	 * @param {string} reviewerFullName
+	 * @returns {Promise<{modal: import('@playwright/test').Locator, form: import('@playwright/test').Locator}>}
+	 */
+	async openEditReviewModal(reviewerFullName) {
+		const modal = await this.openRowAction(
+			reviewerFullName,
+			'Edit',
+			'Edit Review',
+		);
+		const form = await this.legacyForm(modal, 'editReviewForm');
+		return {modal, form};
+	}
+
+	/**
+	 * The reviewMethod radio inside the Edit Review form. fbv suffixes
+	 * element ids at runtime, so address the input by name + value.
+	 *
+	 * @param {import('@playwright/test').Locator} form  the #editReviewForm
+	 * @param {number} methodId  ReviewAssignment::SUBMISSION_REVIEW_METHOD_* (1|2|3)
+	 */
+	reviewMethodRadio(form, methodId) {
+		return form.locator(`input[name="reviewMethod"][value="${methodId}"]`);
+	}
+
+	/**
 	 * Open the Review Details modal for a reviewer's row (More Actions →
 	 * Review Details). Unlike openRowAction, the resulting legacy
 	 * readReview modal's accessible name embeds the submission title
