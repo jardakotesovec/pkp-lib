@@ -1,69 +1,20 @@
 // @ts-check
+// NOTE: split during the submission-stage-actions refit — the stage-1
+// initial-decline test moved to submission-stage-actions.spec.js; this
+// file keeps only the post-review decline (review-decisions plan).
 const {test, expect} = require('../../../../playwright/support/fixtures.js');
 const {EditorialWorkflowPage} = require('../../../../playwright/pages/EditorialWorkflowPage.js');
-const submissionDraft = require('../../../../playwright/fixtures/scenarios/submission-draft.js');
 const submissionInReview = require('../../../../playwright/fixtures/scenarios/submission-in-review.js');
 
 /**
- * Playwright port of the "decline" decision assertions scattered across
- * the Cypress submission fixture specs.
- *
- * Two flavours live in one spec because they share everything except
- * which scenario fixture they seed with:
- *   - decline at stage 1  (InitialDecline, DECISION_INITIAL_DECLINE=8)
- *   - decline after review (Decline,        DECISION_DECLINE=6)
- *
- * In both cases the decision wizard has a single "Notify Authors"
- * email step, so the interaction shape is: click decision → wait for
- * template → Record Decision → success dialog → assert submission
- * status flips to STATUS_DECLINED.
+ * Playwright port of the "decline after review" decision assertion
+ * scattered across the Cypress submission fixture specs (Decline,
+ * DECISION_DECLINE=6). The decision wizard has a single "Notify
+ * Authors" email step, so the interaction shape is: click decision →
+ * wait for template → Record Decision → success dialog → assert
+ * submission status flips to STATUS_DECLINED.
  */
 test.describe('Decision — decline', () => {
-	test('editor declines a stage-1 submission before review', async ({
-		pkpApi,
-		asUser,
-	}) => {
-		const tag = uniqueTag(test.info(), 'decline-stage-1');
-		const spec = submissionDraft({tag});
-		const {submission} = await pkpApi.createSubmission(spec);
-
-		const ctx = await asUser('dbarnes');
-		const page = await ctx.newPage();
-		const workflow = new EditorialWorkflowPage(page);
-		await workflow.goto(submission.id);
-
-		// Stage 1 surfaces the initial-decline button under the
-		// "Decline Submission" label. See
-		// lib/ui-library/src/pages/workflow/composables/useWorkflowConfig/
-		// workflowConfigEditorialOJS.js#266 — action
-		// DECISION_INITIAL_DECLINE, label 'editor.submission.decision.decline'.
-		await expect(
-			page
-				.getByRole('button', {name: 'Decline Submission', exact: true})
-				.first(),
-		).toBeVisible();
-
-		await workflow.clickDecision('Decline Submission');
-		// InitialDecline has one step (notifyAuthors) — straight to
-		// Record Decision.
-		await workflow.recordDecision('has been declined and sent to the archives');
-		await workflow.viewSubmissionFromCompletionDialog(submission.id);
-
-		const after = await workflow.fetchSubmission(submission.id);
-		expect(after.status).toBe(pkpConst.STATUS_DECLINED);
-
-		// Decision row recorded.
-		const decisions = await page.request.get(
-			`/index.php/publicknowledge/api/v1/submissions/${submission.id}/decisions`,
-		);
-		expect(decisions.ok()).toBe(true);
-		const body = await decisions.json();
-		const items = body.items || body;
-		expect(
-			items.some((d) => d.decision === pkpConst.DECISION_INITIAL_DECLINE),
-		).toBe(true);
-	});
-
 	test('editor declines a submission after review', async ({
 		pkpApi,
 		asUser,
@@ -113,7 +64,6 @@ test.describe('Decision — decline', () => {
 const pkpConst = {
 	STATUS_DECLINED: 4,
 	DECISION_DECLINE: 6,
-	DECISION_INITIAL_DECLINE: 8,
 };
 
 /**

@@ -398,7 +398,13 @@ class ReviewRoundProcessor
                 return [];
 
             case 'accepted':
-                return ['dateConfirmed' => $now];
+                // Production parity: accepting on Step 1 runs
+                // PKPReviewerReviewStep1Form::execute →
+                // updateReviewStepAndSaveSubmission, which bumps the
+                // assignment's `step` to 2. Without it, a seeded
+                // "accepted" reviewer re-opens the wizard on Step 1
+                // instead of Step 2.
+                return ['dateConfirmed' => $now, 'step' => 2];
 
             case 'declined':
                 return ['dateConfirmed' => $now, 'declined' => true];
@@ -415,6 +421,13 @@ class ReviewRoundProcessor
                     'dateConfirmed' => $now,
                     'dateCompleted' => $now,
                     'considered' => ReviewAssignment::REVIEW_ASSIGNMENT_CONSIDERED,
+                    // Production parity: submitting on Step 3 runs
+                    // PKPReviewerReviewStep3Form::execute →
+                    // updateReviewStepAndSaveSubmission, leaving `step` = 4.
+                    // The reviewer's wizard then lands on the read-only
+                    // "Review Submitted" completion view, matching what a
+                    // reviewer who completed through the UI sees.
+                    'step' => 4,
                 ];
                 if (isset($reviewerSpec['recommendation'])) {
                     $edits['reviewerRecommendationId'] = $this->resolveRecommendationId(

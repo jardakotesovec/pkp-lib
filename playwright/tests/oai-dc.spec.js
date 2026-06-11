@@ -41,16 +41,42 @@ test.describe('OAI Dublin Core endpoint', () => {
 			// request is served by OAIHandler::index, which calls
 			// PKPSessionGuard::disableSession(). We use the test's baseline
 			// APIRequestContext without any storageState juggling.
-			const res = await request.get(
-				'/index.php/publicknowledge/oai?verb=ListRecords&metadataPrefix=oai_dc',
+			//
+			// The long-lived test DB accumulates published articles far
+			// past OAI's page size, and records sort oldest-first — the
+			// seeded record is NOT on page 1. Scope with `from=` (today)
+			// and walk resumptionTokens until the tagged record appears;
+			// this also exercises real OAI paging semantics.
+			const from = new Date().toISOString().slice(0, 10);
+			let url = `/index.php/publicknowledge/oai?verb=ListRecords&metadataPrefix=oai_dc&from=${from}`;
+			let body = '';
+			let pagesWalked = 0;
+			let found = false;
+			const tagPattern = new RegExp(
+				`<dc:title[^>]*>[^<]*Published article[^<]*${escapeRegex(tag)}[^<]*</dc:title>`,
 			);
-			expect(res.status()).toBe(200);
-			expect(res.headers()['content-type']).toContain('text/xml');
+			for (; pagesWalked < 50; pagesWalked++) {
+				const res = await request.get(url);
+				expect(res.status()).toBe(200);
+				expect(res.headers()['content-type']).toContain('text/xml');
+				body = await res.text();
 
-			const body = await res.text();
-
-			// ListRecords wrapper present (vs. OAI error document).
-			expect(body).toContain('<ListRecords>');
+				// ListRecords wrapper present (vs. OAI error document).
+				expect(body).toContain('<ListRecords>');
+				if (tagPattern.test(body)) {
+					found = true;
+					break;
+				}
+				const token = body.match(
+					/<resumptionToken[^>]*>([^<]+)<\/resumptionToken>/,
+				)?.[1];
+				if (!token) break;
+				url = `/index.php/publicknowledge/oai?verb=ListRecords&resumptionToken=${encodeURIComponent(token)}`;
+			}
+			expect(
+				found,
+				`seeded record (tag ${tag}) not found in ListRecords after walking ${pagesWalked + 1} page(s)`,
+			).toBeTruthy();
 
 			// At least one record element exists. The OAI spec sorts
 			// records by date so we can't predict where ours lands; the
