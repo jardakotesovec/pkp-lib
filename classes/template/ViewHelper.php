@@ -69,6 +69,15 @@ class ViewHelper
     }
 
     /**
+     * Convert HTML to plain text
+     */
+    public static function html2Text(?string $html): string
+    {
+        $result = PKPString::html2text($html);
+        return self::escapeVueDelimiters($result);
+    }
+
+    /**
      * Escape value for safe output in Blade templates within Vue.js context
      *
      * This combines Laravel's e() HTML escaping with Vue delimiter escaping.
