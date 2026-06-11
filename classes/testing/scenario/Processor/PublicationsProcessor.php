@@ -377,7 +377,7 @@ class PublicationsProcessor implements ScenarioProcessor
         $issues = Repo::issue()->getCollector()
             ->filterByContextIds([$contextId])
             ->filterByPublished(true)
-            ->orderBy(Repo::issue()->getCollector()::ORDERBY_PUBLISHED, Repo::issue()->getCollector()::ORDER_DIR_DESC)
+            ->orderBy(Repo::issue()->getCollector()::ORDERBY_DATE_PUBLISHED, Repo::issue()->getCollector()::ORDER_DIR_DESC)
             ->getMany();
         if ($issues->isEmpty()) {
             throw new \RuntimeException(

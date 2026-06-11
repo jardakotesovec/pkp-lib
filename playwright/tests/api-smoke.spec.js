@@ -206,25 +206,32 @@ test.describe('API smoke', () => {
 			);
 			await expect(page).not.toHaveURL(/\/login/);
 
-			// In-page fetch so the session cookies ride along.
-			const result = await page.evaluate(async () => {
+			// In-page fetch so the session cookies ride along. Scope by
+			// searchPhrase using ONLY the unique tag token: the phrase is
+			// space-tokenized and OR-matched (LIKE) against titles, so any
+			// common word would match other runs' accumulated submissions,
+			// while drafts carry no dateSubmitted (parity with real drafts)
+			// and sort last — the seeded row is not guaranteed onto page 1
+			// of a loosely-scoped listing.
+			const result = await page.evaluate(async (phrase) => {
 				const r = await fetch(
-					'/index.php/publicknowledge/api/v1/submissions',
+					'/index.php/publicknowledge/api/v1/submissions?searchPhrase=' +
+						encodeURIComponent(phrase),
 					{headers: {Accept: 'application/json'}},
 				);
 				const j = await r.json();
 				return {status: r.status, body: j};
-			});
+			}, tag);
 			expect(result.status).toBe(200);
 			expect(Array.isArray(result.body.items)).toBe(true);
 
 			// The seeded submission must surface in atester's listing.
-			// Anchor on the submission id rather than title to avoid
-			// race-with-other-tests false matches.
+			// Anchor on the submission id rather than title position to
+			// avoid race-with-other-tests false matches.
 			const ids = result.body.items.map((s) => s.id);
 			expect(
 				ids.includes(submission.id),
-				`atester should see submission id=${submission.id} in /submissions; got ids=${JSON.stringify(ids)}`,
+				`atester should see submission id=${submission.id} in /submissions?searchPhrase=${titleEn}; got ids=${JSON.stringify(ids)}`,
 			).toBeTruthy();
 		},
 	);

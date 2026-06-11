@@ -56,7 +56,16 @@ exports.ensureAuthStateFor = async function ensureAuthStateFor(
 	}
 
 	fs.mkdirSync(path.dirname(authPath), {recursive: true});
-	const context = await browser.newContext({baseURL});
+	// Explicit empty storageState: under @playwright/test, the `browser`
+	// fixture's newContext() inherits the worker's resolved `use` options
+	// — including the storageState of the spec's `test.use({user})`. A
+	// fresh-login context that inherits another user's cookies lands on
+	// the already-logged-in redirect instead of the login form and the
+	// login times out. An explicit empty state opts out of inheritance.
+	const context = await browser.newContext({
+		baseURL,
+		storageState: {cookies: [], origins: []},
+	});
 	try {
 		const page = await context.newPage();
 		const login = new LoginPage(page);

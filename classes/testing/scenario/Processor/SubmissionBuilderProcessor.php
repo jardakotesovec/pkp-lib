@@ -27,6 +27,11 @@
  *     and converts a present commentsForTheEditors value into a Stage 1
  *     "Comments for the Editor" discussion via
  *     Repo::editorialTask()->addCommentsForEditorsQuery().
+ *     When EXPLICITLY false, the submission is left as a wizard draft:
+ *     submission_progress = 'start' and date_submitted NULL, matching
+ *     the state the Start form leaves before the author finishes the
+ *     wizard (resumable at /submission?id=N, listed in the dashboard's
+ *     Incomplete view, deletable via the incomplete bulk-delete).
  *
  * Mirrors the happy-path shape of PKPSubmissionController::add, minus
  * auth/validation/user-group-disambiguation (not relevant in a
@@ -66,14 +71,30 @@ class SubmissionBuilderProcessor implements ScenarioProcessor
         $locale = $spec['locale'] ?? 'en';
         $sectionId = $this->resolveSectionId($context->getId(), $spec['section'], $locale);
 
+        // Explicit `submitted: false` asks for a wizard draft. A real
+        // in-progress submission keeps the markers the wizard's Start
+        // form leaves behind: submission_progress = 'start' (cleared
+        // only by the final Submit) and NO date_submitted. Without
+        // these, the draft is invisible to the author dashboard's
+        // Incomplete view (Collector::filterByIncomplete matches
+        // submission_progress <> '') and /submission?id=N routes to the
+        // "complete" screen instead of resuming the wizard
+        // (PKPSubmissionHandler::index gates on submissionProgress).
+        //
+        // Absent key + no decisions/reviewRounds keeps the historical
+        // "submitted-shaped stage-1 row without firing
+        // SubmissionSubmitted" shape that the Discussion Manager
+        // fixtures rely on — only the explicit false flips draft shape.
+        $isDraft = ($spec['submitted'] ?? null) === false;
+
         // Create submission + bare publication atomically via Repo.
         $submission = Repo::submission()->newDataObject([
             'contextId' => $context->getId(),
             'locale' => $locale,
             'status' => \PKP\submission\PKPSubmission::STATUS_QUEUED,
             'stageId' => WORKFLOW_STAGE_ID_SUBMISSION,
-            'submissionProgress' => '',
-            'dateSubmitted' => Core::getCurrentDate(),
+            'submissionProgress' => $isDraft ? 'start' : '',
+            'dateSubmitted' => $isDraft ? null : Core::getCurrentDate(),
         ]);
         $publication = Repo::publication()->newDataObject([
             'sectionId' => $sectionId,
@@ -89,12 +110,21 @@ class SubmissionBuilderProcessor implements ScenarioProcessor
         $submission = Repo::submission()->get($submissionId);
         $publicationId = (int)$submission->getData('currentPublicationId');
 
-        // Assign the submitter to stage 1 as author.
+        // Assign the submitter to stage 1 as author. For wizard drafts,
+        // mirror PKPSubmissionController::add() (lines 722-737): the
+        // canChangeMetadata flag is forced true while submissionProgress
+        // is non-empty ("Authors can always edit metadata before
+        // submitting") — without it the wizard's Details autosaves are
+        // rejected by canEditPublication and seeded drafts silently
+        // refuse edits. Submitted-shaped seeds keep the historical
+        // default (the user group's permitMetadataEdit).
         $authorUserGroup = UserGroupLookup::userGroupForRole($context->getId(), 'author');
         Repo::stageAssignment()->build(
             $submissionId,
             (int)$authorUserGroup->id,
-            $submitter->getId()
+            $submitter->getId(),
+            null,
+            $isDraft ? true : null
         );
 
         // Create the Author row from the submitter's user record and mark

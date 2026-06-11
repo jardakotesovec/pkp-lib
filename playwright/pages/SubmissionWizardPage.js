@@ -132,18 +132,73 @@ exports.SubmissionWizardPage = class SubmissionWizardPage extends BasePage {
 	}
 
 	/**
+	 * Click the wizard footer's Back button (absent on the first step).
+	 */
+	async back() {
+		await this.page
+			.locator('.submissionWizard__footer')
+			.getByRole('button', {name: 'Back'})
+			.click();
+	}
+
+	/**
 	 * Jump to a wizard step via the Steps nav (the horizontal rail of
 	 * step pills at the top of the wizard). Use this to re-open an
 	 * earlier step after errors were surfaced at Review.
 	 *
+	 * When the rail doesn't fit the viewport width, Steps.vue collapses
+	 * it: every non-current pill gets the `-screenReader` class
+	 * (visually clipped to 1px) and a chevron toggle is added. A
+	 * `force: true` click on a clipped pill dispatches its events at
+	 * coordinates that belong to whichever element is rendered there —
+	 * a silent no-op. Expand the rail first when the target pill is
+	 * clipped, then click normally so Playwright's actionability
+	 * checks hold. (Only started steps render as <button>; clicking an
+	 * unstarted step is a caller error and fails on the locator.)
+	 *
+	 * Two further hardenings, both observed against the live wizard:
+	 *   - The pill's accessible name is "{n} {label}", so a plain
+	 *     substring match resolves gotoStep('Review') to the
+	 *     "Reviewer Suggestions" pill (it precedes "Review" in the
+	 *     rail). The name match is end-anchored instead.
+	 *   - The rail re-renders whenever startedSteps changes (the step
+	 *     number swaps for a check icon); a click dispatched into that
+	 *     re-render is swallowed. Verify the step actually opened and
+	 *     retry the click a couple of times before failing.
+	 *
 	 * @param {string} stepName  e.g. 'Details', 'Review', 'Upload Files'
 	 */
 	async gotoStep(stepName) {
-		await this.page
-			.locator('.pkpSteps')
-			.getByRole('button', {name: stepName, exact: false})
-			.first()
-			.click({force: true});
+		const rail = this.page.locator('.pkpSteps');
+		const namePattern = new RegExp(
+			stepName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*$',
+		);
+		const pill = rail.getByRole('button', {name: namePattern}).first();
+		for (let attempt = 0; ; attempt++) {
+			const clipped = rail.locator('li.-screenReader').filter({
+				has: this.page.getByRole('button', {name: namePattern}),
+			});
+			if (await clipped.count()) {
+				// The expand toggle lives in .pkpSteps__controls, which is
+				// aria-hidden — locate by CSS, not role.
+				await rail.locator('.pkpSteps__controls button').click();
+			}
+			// Hit-test-free click. Even when expanded, the dropdown's
+			// pills can sit underneath the sticky app header / side nav
+			// at default viewport sizes, so a coordinate-based click gets
+			// intercepted ("<nav id=app-nav> intercepts pointer events").
+			// dispatchEvent fires the Vue @click handler on the pill
+			// element itself regardless of geometry.
+			await pill.dispatchEvent('click');
+			try {
+				await this.expectStep(stepName, {timeout: 3_000});
+				return;
+			} catch (err) {
+				if (attempt >= 2) {
+					throw err;
+				}
+			}
+		}
 	}
 
 	/**
@@ -153,12 +208,22 @@ exports.SubmissionWizardPage = class SubmissionWizardPage extends BasePage {
 	 * under parallel load) fails with a clear step-name mismatch
 	 * instead of an opaque locator timeout.
 	 *
+	 * The match is end-anchored ("{n} {label}" is the pill text) so
+	 * that expectStep('Review') can't be satisfied by the
+	 * "Reviewer Suggestions" pill.
+	 *
 	 * @param {string} stepName  e.g. 'For the Editors', 'Review'
+	 * @param {{timeout?: number}} [opts]
 	 */
-	async expectStep(stepName) {
+	async expectStep(stepName, {timeout} = {}) {
 		await expect(
 			this.page.locator('.pkpSteps__step__label--current'),
-		).toContainText(stepName);
+		).toHaveText(
+			new RegExp(
+				stepName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*$',
+			),
+			timeout ? {timeout} : undefined,
+		);
 	}
 
 	/**
@@ -168,10 +233,24 @@ exports.SubmissionWizardPage = class SubmissionWizardPage extends BasePage {
 	 * @param {string} [locale='en']
 	 */
 	async setTitle(title, locale = 'en') {
+		await this.setDetailsField('title', title, locale);
+	}
+
+	/**
+	 * Set any rich-text field of the Details step (the `titleAbstract`
+	 * form) for a specific locale — e.g. 'title' or 'abstract'. The
+	 * wizard's Details form removes `prefix` and `subtitle`, so those
+	 * two never resolve here.
+	 *
+	 * @param {string} field   field name, e.g. 'abstract'
+	 * @param {string} html    HTML (plain text is fine; TinyMCE wraps it)
+	 * @param {string} [locale='en']
+	 */
+	async setDetailsField(field, html, locale = 'en') {
 		await setTinyMceContent(
 			this.page,
-			`titleAbstract-title-control-${locale}`,
-			title,
+			`titleAbstract-${field}-control-${locale}`,
+			html,
 		);
 	}
 
@@ -302,5 +381,277 @@ exports.SubmissionWizardPage = class SubmissionWizardPage extends BasePage {
 		await expect(
 			this.page.getByRole('heading', {name: 'Submission complete'}),
 		).toBeVisible({timeout: 20_000});
+	}
+
+	/**
+	 * Click the footer's Submit button and wait for the confirmation
+	 * dialog to open. Returns the dialog locator so the caller can
+	 * assert on its copy and choose Cancel or Submit itself (the
+	 * `submit()` helper above wraps the always-confirm path).
+	 *
+	 * Scrolls the button into view first — the Review panels above it
+	 * shift layout while validation settles, which otherwise races
+	 * Playwright's stability check.
+	 *
+	 * @returns {Promise<import('@playwright/test').Locator>}
+	 */
+	async openSubmitDialog() {
+		const submitBtn = this.page
+			.locator('.submissionWizard__footer')
+			.getByRole('button', {name: /^Submit$/});
+		await submitBtn.scrollIntoViewIfNeeded();
+		await expect(submitBtn).toBeEnabled({timeout: 15_000});
+		await submitBtn.click();
+		const dialog = this.page.getByRole('dialog');
+		await expect(dialog).toBeVisible({timeout: 10_000});
+		return dialog;
+	}
+
+	/**
+	 * Upload a file on the Upload Files step via the dropzone's hidden
+	 * `<input type="file">` (clicking the visible button would open a
+	 * real OS dialog — see patterns.md). Races the upload POST so the
+	 * returned list item is already saved server-side.
+	 *
+	 * @param {string} filePath  absolute path of the fixture to upload
+	 * @returns {Promise<import('@playwright/test').Locator>} the new file's list item
+	 */
+	async uploadFile(filePath) {
+		const fileInput = this.page.locator('input[type="file"]').first();
+		await expect(fileInput).toBeAttached({timeout: 15_000});
+		await Promise.all([
+			this.page.waitForResponse(
+				(res) =>
+					res.request().method() === 'POST' &&
+					/\/api\/v1\/submissions\/\d+\/files$/.test(res.url()) &&
+					res.ok(),
+				{timeout: 30_000},
+			),
+			fileInput.setInputFiles(filePath),
+		]);
+		const baseName = filePath.split(/[\\/]/).pop() ?? filePath;
+		const item = this.fileItem(baseName);
+		await expect(item).toBeVisible({timeout: 15_000});
+		return item;
+	}
+
+	/**
+	 * Locator for an uploaded file's list item, scoped by file name.
+	 *
+	 * @param {string} name  file name as shown in the list (e.g. 'dummy.pdf')
+	 */
+	fileItem(name) {
+		return this.page
+			.locator('.listPanel__item--submissionFile')
+			.filter({hasText: name})
+			.first();
+	}
+
+	/**
+	 * Answer the "What kind of file is this?" prompt on a just-uploaded
+	 * file by clicking one of the primary-genre link buttons (e.g.
+	 * 'Article Text'). Waits for the genre PUT to land so the badge is
+	 * rendered before returning.
+	 *
+	 * @param {import('@playwright/test').Locator} item  file list item (from uploadFile)
+	 * @param {string} genreName  visible label of a primary genre
+	 */
+	async assignPrimaryGenre(item, genreName) {
+		const btn = item
+			.locator('.listPanel--submissionFiles__setGenreButton')
+			.filter({hasText: genreName})
+			.first();
+		await Promise.all([
+			this.page.waitForResponse(
+				(res) =>
+					res.request().method() === 'POST' &&
+					/\/api\/v1\/submissions\/\d+\/files\/\d+/.test(res.url()) &&
+					res.ok(),
+				{timeout: 15_000},
+			),
+			btn.click(),
+		]);
+		await expect(
+			item.locator('.listPanel--submissionFiles__itemGenre'),
+		).toContainText(genreName, {timeout: 10_000});
+	}
+
+	/**
+	 * Open the file's genre form via the genre prompt's "Other" link
+	 * button (non-primary genres aren't offered as one-click buttons).
+	 * The same side modal opens from the item's "Edit" button for files
+	 * that already have a genre. Returns the modal's form locator so the
+	 * caller can assert on the genre options before saving.
+	 *
+	 * @param {import('@playwright/test').Locator} item  file list item
+	 * @returns {Promise<import('@playwright/test').Locator>} the genre form inside the modal
+	 */
+	async openFileGenreForm(item) {
+		// Both a genre named "Other" and the prompt's edit shortcut are
+		// labelled "Other", but only the supplementary genres render in
+		// the modal — the prompt row only offers primary genres plus
+		// this one "Other" button (SubmissionFilesListItem.vue).
+		await item
+			.locator('.listPanel--submissionFiles__setGenreButton', {
+				hasText: 'Other',
+			})
+			.first()
+			.click();
+		// The form root carries no stable id; anchor on the genreId radio
+		// group the PKPSubmissionFileForm always renders.
+		const form = this.page
+			.locator('[data-cy="active-modal"] form')
+			.filter({has: this.page.locator('input[name="genreId"]')})
+			.first();
+		await expect(
+			form.locator('input[name="genreId"]').first(),
+		).toBeVisible({timeout: 15_000});
+		return form;
+	}
+
+	/**
+	 * Pick a genre radio in the open genre form and Save. Waits for the
+	 * file PUT and for the badge to reflect the new genre.
+	 *
+	 * @param {import('@playwright/test').Locator} form  from openFileGenreForm
+	 * @param {import('@playwright/test').Locator} item  the owning file list item
+	 * @param {string} genreName  visible radio label (e.g. 'Data Set')
+	 */
+	async saveFileGenre(form, item, genreName) {
+		await form.locator('label', {hasText: genreName}).first().click();
+		await Promise.all([
+			this.page.waitForResponse(
+				(res) =>
+					res.request().method() === 'POST' &&
+					/\/api\/v1\/submissions\/\d+\/files\/\d+/.test(res.url()) &&
+					res.ok(),
+				{timeout: 15_000},
+			),
+			form.getByRole('button', {name: 'Save', exact: true}).click(),
+		]);
+		await expect(form).toHaveCount(0, {timeout: 10_000});
+		await expect(
+			item.locator('.listPanel--submissionFiles__itemGenre'),
+		).toContainText(genreName, {timeout: 10_000});
+	}
+
+	/**
+	 * Remove an uploaded file via its "Remove" button + the confirm
+	 * dialog. Waits for the DELETE and for the item to leave the list.
+	 *
+	 * @param {import('@playwright/test').Locator} item  file list item
+	 */
+	async removeFile(item) {
+		await item.getByRole('button', {name: 'Remove'}).click();
+		const dialog = this.page.getByRole('dialog');
+		await expect(dialog).toContainText(
+			'Are you sure you want to remove this file?',
+		);
+		await Promise.all([
+			this.page.waitForResponse(
+				(res) =>
+					res.request().method() === 'POST' &&
+					/\/api\/v1\/submissions\/\d+\/files\/\d+/.test(res.url()) &&
+					res.ok(),
+				{timeout: 15_000},
+			),
+			dialog.getByRole('button', {name: 'Yes', exact: true}).click(),
+		]);
+		await expect(item).toHaveCount(0, {timeout: 10_000});
+	}
+
+	/**
+	 * Add a contributor on the Contributors step. Opens the "Add
+	 * Contributor" side modal, fills the person fields, ticks the
+	 * required Author contributor-role checkbox, Saves, and waits for
+	 * the POST + the new name to appear in the list panel.
+	 *
+	 * @param {Object} opts
+	 * @param {string} opts.givenName
+	 * @param {string} opts.familyName
+	 * @param {string} opts.email
+	 * @param {string} [opts.country='CA']  country option value
+	 * @param {string} [opts.locale='en']   locale suffix of the name inputs
+	 */
+	async addContributor({givenName, familyName, email, country = 'CA', locale = 'en'}) {
+		await this.page
+			.getByRole('button', {name: 'Add Contributor', exact: true})
+			.click();
+
+		// The modal wrapper reports visibility:hidden during its open
+		// transition (patterns.md) — anchor on the email input instead.
+		const emailInput = this.page.locator('input[name="email"]').last();
+		await expect(emailInput).toBeVisible({timeout: 15_000});
+
+		await this.page
+			.locator(`input[name="givenName-${locale}"]`)
+			.last()
+			.fill(givenName);
+		await this.page
+			.locator(`input[name="familyName-${locale}"]`)
+			.last()
+			.fill(familyName);
+		await emailInput.fill(email);
+		await this.page
+			.locator('select[name="country"]')
+			.last()
+			.selectOption(country);
+
+		// contributorRoles is a required FieldOptions checkbox group when
+		// the journal ships more than one contributor role (publicknowledge
+		// does: Author + Translator).
+		const roleCheckbox = this.page
+			.locator('label', {hasText: 'Author'})
+			.locator('input[type="checkbox"]')
+			.first();
+		if (await roleCheckbox.isVisible().catch(() => false)) {
+			await roleCheckbox.check({force: true});
+		}
+
+		await Promise.all([
+			this.page.waitForResponse(
+				(res) =>
+					/\/api\/v1\/submissions\/\d+\/publications\/\d+\/contributors/.test(
+						res.url(),
+					) && res.ok(),
+				{timeout: 20_000},
+			),
+			this.page
+				.getByRole('button', {name: 'Save', exact: true})
+				.last()
+				.click(),
+		]);
+		await expect(
+			this.contributorItem(`${givenName} ${familyName}`),
+		).toBeVisible({timeout: 15_000});
+	}
+
+	/**
+	 * Locator for a contributor's list-panel row, scoped by full name.
+	 *
+	 * @param {string} fullName  e.g. 'Author Tester'
+	 */
+	contributorItem(fullName) {
+		return this.page
+			.locator('.listPanel--contributor .listPanel__item')
+			.filter({hasText: fullName})
+			.first();
+	}
+
+	/**
+	 * Locator for one of the Review step's per-section panels, filtered
+	 * by its heading. Multilingual journals render Details / For the
+	 * Editors once per metadata locale — pass e.g. /^Details \(English\)/
+	 * to disambiguate.
+	 *
+	 * @param {string|RegExp} heading
+	 */
+	reviewPanel(heading) {
+		return this.page
+			.locator('.submissionWizard__reviewPanel')
+			.filter({
+				has: this.page.getByRole('heading', {name: heading}),
+			})
+			.first();
 	}
 };

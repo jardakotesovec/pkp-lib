@@ -43,6 +43,37 @@ exports.setTinyMceContent = async function setTinyMceContent(
 		);
 	}
 
+	await setContent(page, editorId, content);
+};
+
+/**
+ * Read the contents of a TinyMCE editor instance. The mirror of
+ * `setTinyMceContent` — used by specs that assert persisted values
+ * after a reload (e.g. wizard autosave restore). Waits for the editor
+ * to initialise, then returns `tinymce.get(id).getContent()` (HTML).
+ *
+ * @param {import('@playwright/test').Page} page
+ * @param {string} editorId  the control id, e.g. 'titleAbstract-title-control-en'
+ * @param {{timeout?: number}} [opts]
+ * @returns {Promise<string>} the editor's HTML content
+ */
+exports.getTinyMceContent = async function getTinyMceContent(
+	page,
+	editorId,
+	{timeout = 10_000} = {},
+) {
+	await page.waitForFunction(
+		(id) => Boolean(window.tinymce?.get(id)?.initialized),
+		editorId,
+		{timeout},
+	);
+	return page.evaluate(
+		(id) => window.tinymce.get(id).getContent(),
+		editorId,
+	);
+};
+
+async function setContent(page, editorId, content) {
 	// Set content and trigger the full pipeline `tinymce-vue` listens on.
 	// The Vue bridge maps TinyMCE's `Change` / `Input` events to the
 	// `change` / `input` v-model events PKP's FieldRichTextarea binds
@@ -67,4 +98,4 @@ exports.setTinyMceContent = async function setTinyMceContent(
 		},
 		{id: editorId, html: content},
 	);
-};
+}
