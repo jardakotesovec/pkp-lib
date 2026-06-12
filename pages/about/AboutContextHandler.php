@@ -102,7 +102,12 @@ class AboutContextHandler extends Handler
         );
 
         $mastheadUsers = [];
-        foreach ($mastheadRoles as $userGroupId => $mastheadUserGroup) {
+        foreach ($mastheadRoles as $mastheadUserGroup) {
+            // Eloquent collections from UserGroup::query()->get() are keyed
+            // by position (0, 1, …), NOT by user_group_id — index the
+            // grouped user IDs by the group's actual ID, as the template's
+            // array_key_exists($mastheadRole->id, $mastheadUsers) expects.
+            $userGroupId = $mastheadUserGroup->id;
             foreach ($allUsersIdsGroupedByUserGroupId[$userGroupId] ?? [] as $userId) {
                 $user = Repo::user()->get($userId);
                 $userUserGroup = UserUserGroup::withUserId($user->getId())
@@ -169,7 +174,10 @@ class AboutContextHandler extends Handler
         );
 
         $mastheadUsers = [];
-        foreach ($mastheadRoles as $userGroupId => $mastheadUserGroup) {
+        foreach ($mastheadRoles as $mastheadUserGroup) {
+            // See editorialMasthead() above: index by the group's real ID,
+            // not the collection's positional key.
+            $userGroupId = $mastheadUserGroup->id;
             foreach ($allUsersIdsGroupedByUserGroupId[$userGroupId] ?? [] as $userId) {
                 $user = Repo::user()->get($userId);
                 $userUserGroups = UserUserGroup::withUserId($user->getId())

@@ -1,12 +1,13 @@
 // @ts-check
 const {test, expect} = require('../support/base-test.js');
 /**
- * Manager assigns a user to a role on Users & Roles — row #60 in
- * docs/e2e-playwright-migration.md.
+ * Manager-side invitation wizard on Users & Roles —
+ * docs/e2e/plans/user-invitations.md rows 2 and 6 (rows 1 and 3–5 live
+ * in user-invitation.spec.js).
  *
  * Mirrors the inbound side of the Cypress `inviteUser` helper
  * (`lib/pkp/cypress/support/commands.js#967`) for an EXISTING journal
- * user, distinct from the new-email invite branch covered by row #57.
+ * user, distinct from the new-email invite branch.
  *
  * ## Surprise — there is no non-invite path in OJS today
  *
@@ -18,33 +19,31 @@ const {test, expect} = require('../support/base-test.js');
  *      `app(Invitation::class)->createNew('userRoleAssignment')`.
  *   2. The wizard's user-search step (`UserInvitationSearchFormStep`)
  *      hits `/api/v1/users?searchPhrase=…`, which filters by
- *      `contextId` server-side. So a baseline user not yet in the
- *      scratch journal is invisible to the wizard's search and falls
- *      into the "new user" branch — same as row #57.
+ *      `contextId` server-side. So a user not yet in the scratch
+ *      journal is invisible to the wizard's search and falls into the
+ *      "new user" branch; a user already enrolled resolves to the
+ *      existing-user branch (row 6 asserts that resolution).
  *   3. The "Edit user" action on a journal user opens the SAME wizard
  *      with the search step skipped (see `SendInvitationStep::getSteps`
  *      — `if (!$invitation && !$user) { ... }`). The remaining two
  *      steps are Enter Details + Email Composer; submitting the email
  *      only WRITES a pending invitation row + dispatches the email,
  *      it does not assign the role directly. The user must accept
- *      via the email link before `user_user_groups` is mutated.
+ *      via the email link before `user_user_groups` is mutated
+ *      (user-invitation.spec.js row 3 covers that side).
  *
- * The genuinely-distinct UI path Row #60 can cover, then, is the
- * editUser branch: a manager opens the Edit-user wizard for a journal
- * user, adds a SECOND role, and the OJS UI surfaces a pending
- * invitation. The role-assignment-completion side (token + accept
- * link) is identical to row #57's territory; this spec stops at the
- * "Invitation Sent" confirmation + the pending invitation REST row,
- * which is the load-bearing assertion that the manager-side UI
- * actually wired the form to the invitation-create pipeline.
+ * ## Seed shape (refit per the plan's principle-7 note)
  *
- * ## Seed shape
+ *   The original migration spec seeded **phudson** — one of the 16
+ *   shared baseline users — and left a pending invitation on his
+ *   account across runs. Refit: each test seeds its own THROWAWAY
+ *   `users[]` user (password supplied → created on the fly by
+ *   UserAssignmentProcessor) so no shared user accumulates state.
  *
  *   E0 scratch journal:
- *     - dbarnes  → manager (scratch journal admin)
- *     - phudson  → reviewer (already has a role, so visible in the
- *                  Users grid + the Edit-user wizard reaches him with
- *                  the search step skipped)
+ *     - dbarnes   → manager (scratch journal admin)
+ *     - throwaway → reviewer (already has a role, so visible in the
+ *                   Users grid AND resolvable by the wizard's search)
  *
  * ## Locator notes
  *
@@ -59,41 +58,57 @@ const {test, expect} = require('../support/base-test.js');
  *     the page (not the row).
  *   - The wizard's role select is a native `<select name="userGroupId">`.
  *     The `availableUserGroups` computed in `UserInvitationUserGroupsTable`
- *     filters out roles the user already holds, so "Reviewer" is
- *     absent for phudson — pick "Author" instead.
+ *     filters out roles the user already holds (active, no dateEnd),
+ *     so "Reviewer" is absent for the throwaway — row 6 asserts the
+ *     exclusion directly on the option list.
  *   - User-group IDs are scratch-journal-specific, so anchor on the
  *     visible role label (the option's text), not its value.
  *   - "Save And Continue" advances from Details → Email; submission
  *     button on the email step is "Invite user to the role".
  *   - The success dialog has `role="dialog"` with the
  *     `userInvitation.modal.title` heading "Invitation Sent".
+ *   - The search step's found/not-found message
+ *     (`userInvitation.search.userFound`) is set by the step action but
+ *     cleared again by `updateInvitation()` before the next step
+ *     renders (UserInvitationPageStore#282) — it is NOT a reliable
+ *     assertion target. Row 6 asserts the resolution by its effects:
+ *     the details step renders the existing user's identity display
+ *     (no editable new-user form) and the current-roles table.
  *
  * ## Drop list (vs the plan)
  *
  *   - The "user not yet in any scratch-journal role" requirement was
- *     dropped — see the surprise note above. phudson is seeded as a
- *     reviewer so the Users grid surfaces him; the spec then drives
- *     the editUser → Add Another Role path, which IS the only role
- *     surface the UI exposes for an already-known journal user.
+ *     dropped — see the surprise note above.
  *   - The "log in as the assignee and verify role-gated pages" arm
  *     was dropped — that requires driving the email-link accept flow
- *     (row #57's territory).
+ *     (user-invitation.spec.js rows 1/3 territory).
  */
 test.describe('Users & Roles — assign user to a role', () => {
 	test(
 		'manager assigns an existing journal user to an additional role and sees a pending invitation',
 		{tag: '@regression'},
-		async ({pkpApi, browser, asUser}) => {
-			const tag = uniqueTag();
+		async ({pkpApi, asUser}) => {
+			const tag = uniqueTag('r60');
+			const suffix = tag.split('-').pop();
+			// Throwaway invitee — created by the scenario endpoint
+			// (password present → create branch), so no shared seeded
+			// user carries a pending invitation across runs.
+			const throwaway = {
+				username: `ura2${suffix}`,
+				password: `ura2${suffix}ura2${suffix}`,
+				givenName: 'Ursula',
+				familyName: `Assignee${suffix}`,
+				email: `ura2${suffix}@mailinator.com`,
+			};
+			const fullName = `${throwaway.givenName} ${throwaway.familyName}`;
 			const {context} = await pkpApi.createJournal({
 				tag,
 				users: [
 					{username: 'dbarnes', roles: ['manager']},
-					// phudson seeded as reviewer so the Users grid
-					// surfaces him AND the wizard's filterByContextIds
-					// search would find him — but we drive the editUser
-					// flow which sidesteps the search step entirely.
-					{username: 'phudson', roles: ['reviewer']},
+					// Seeded as reviewer so the Users grid surfaces the
+					// row — we drive the editUser flow which sidesteps
+					// the search step entirely.
+					{...throwaway, roles: ['reviewer']},
 				],
 			});
 
@@ -109,19 +124,17 @@ test.describe('Users & Roles — assign user to a role', () => {
 				page.getByRole('heading', {name: 'Users & Roles'}),
 			).toBeVisible();
 
-			// Confirm phudson is in the user access table at baseline
-			// — the row contains "Paul Hudson" + "Reviewer".
-			const phudsonRow = page.locator('tr', {hasText: 'Paul Hudson'});
-			await expect(phudsonRow).toBeVisible();
-			await expect(phudsonRow).toContainText('Reviewer');
+			// Confirm the throwaway is in the user access table at
+			// baseline — the row contains the full name + "Reviewer".
+			const userRow = page.locator('tr', {hasText: fullName});
+			await expect(userRow).toBeVisible();
+			await expect(userRow).toContainText('Reviewer');
 
-			// Open phudson's More Actions menu. The button carries
+			// Open the row's More Actions menu. The button carries
 			// `aria-haspopup="menu"` reliably; the accessible name
 			// uses an unresolved translation key on scratch journals
 			// in some compile states, so anchor by attribute.
-			await phudsonRow
-				.locator('button[aria-haspopup="menu"]')
-				.click();
+			await userRow.locator('button[aria-haspopup="menu"]').click();
 
 			// The menu portal renders at the document root, hence the
 			// page-scoped getByRole. "Edit" routes to the editUser
@@ -136,7 +149,7 @@ test.describe('Users & Roles — assign user to a role', () => {
 			// read-only display blocks. The page-level h1 is empty
 			// in editUser mode (UserRoleAssignmentInviteUIController
 			// sets `pageTitle = ''` when `$user` is set), so anchor
-			// on the step-2 heading "STEP 1 - Enter details and
+			// on the step heading "STEP 1 - Enter details and
 			// invite for roles" (h2) which Vue renders once the
 			// page mounts.
 			await page.waitForURL(/\/management\/settings\/user\/\d+(\?|#|$)/);
@@ -160,7 +173,7 @@ test.describe('Users & Roles — assign user to a role', () => {
 
 			// Pick the new role by visible label (the user_group_id
 			// option values are scratch-journal-specific).
-			// `availableUserGroups` filters out roles phudson
+			// `availableUserGroups` filters out roles the user
 			// already holds, so "Reviewer" is excluded — Author is
 			// the canonical pick for an existing-reviewer test.
 			const newRoleSelect = page.locator('select[name="userGroupId"]');
@@ -205,11 +218,11 @@ test.describe('Users & Roles — assign user to a role', () => {
 			// userInvitation.modal.title heading.
 			const sentDialog = page.getByRole('dialog', {name: 'Invitation Sent'});
 			await expect(sentDialog).toBeVisible({timeout: 15_000});
-			await expect(sentDialog).toContainText('phudson@mailinator.com');
+			await expect(sentDialog).toContainText(throwaway.email);
 
 			// REST sanity — the journal-scoped invitations
 			// endpoint should now list one PENDING userRoleAssignment
-			// invitation for phudson. We piggy-back dbarnes's
+			// invitation for the throwaway. We piggy-back dbarnes's
 			// authenticated browser context for the GET so we
 			// inherit the session cookie + CSRF surface.
 			const apiRes = await page.request.get(
@@ -218,16 +231,19 @@ test.describe('Users & Roles — assign user to a role', () => {
 			expect(apiRes.ok()).toBeTruthy();
 			const body = await apiRes.json();
 			expect(Array.isArray(body.items)).toBeTruthy();
-			const phudsonInvite = body.items.find(
-				(i) => i.existingUser?.email === 'phudson@mailinator.com',
+			const pendingInvite = body.items.find(
+				(i) => i.existingUser?.email === throwaway.email,
 			);
-			expect(phudsonInvite, 'pending invitation row for phudson').toBeTruthy();
-			expect(phudsonInvite.status).toBe('PENDING');
+			expect(
+				pendingInvite,
+				`pending invitation row for ${throwaway.email}`,
+			).toBeTruthy();
+			expect(pendingInvite.status).toBe('PENDING');
 
 			// And one of the userGroupsToAdd entries is the
 			// "Author" role we just picked — the resource serializes
 			// userGroupName per locale.
-			const userGroupNames = (phudsonInvite.userGroupsToAdd || []).map(
+			const userGroupNames = (pendingInvite.userGroupsToAdd || []).map(
 				(g) => g.userGroupName,
 			);
 			expect(
@@ -247,13 +263,112 @@ test.describe('Users & Roles — assign user to a role', () => {
 			await expect(
 				page.getByRole('heading', {name: /^Invitations \(1\)$/}),
 			).toBeVisible({timeout: 15_000});
-		
+		},
+	);
+
+	test(
+		'wizard search resolves an existing journal user and excludes roles already held',
+		{tag: '@regression'},
+		async ({pkpApi, asUser}) => {
+			const tag = uniqueTag('r6');
+			const suffix = tag.split('-').pop();
+			// Throwaway user already enrolled in the scratch journal —
+			// the wizard's context-scoped search must resolve them
+			// into the existing-user branch.
+			const existing = {
+				username: `ura6${suffix}`,
+				password: `ura6${suffix}ura6${suffix}`,
+				givenName: 'Selma',
+				familyName: `Search${suffix}`,
+				email: `ura6${suffix}@mailinator.com`,
+			};
+			const {context} = await pkpApi.createJournal({
+				tag,
+				users: [
+					{username: 'dbarnes', roles: ['manager']},
+					{...existing, roles: ['reviewer']},
+				],
+			});
+
+			const ctx = await asUser('dbarnes');
+			const page = await ctx.newPage();
+			await page.goto(
+				`/index.php/${context.path}/management/settings/access`,
+			);
+			await expect(
+				page.getByRole('heading', {name: 'Users & Roles'}),
+			).toBeVisible();
+
+			// Fresh wizard (search step included — unlike editUser).
+			await page
+				.getByRole('button', {name: 'Invite to a role', exact: true})
+				.click();
+			await expect(
+				page.getByRole('heading', {name: /STEP 1 - Search User/i}),
+			).toBeVisible({timeout: 15_000});
+
+			// Step-1 search by the email of a user already in the
+			// journal. The step action resolves the account (exact
+			// email match against the context-scoped /users search)
+			// and stashes userId + identity + currentUserGroups on
+			// the wizard payload before the wizard advances.
+			await page.locator('input[name="search"]').fill(existing.email);
+			await page
+				.getByRole('button', {name: 'Search User', exact: true})
+				.click();
+
+			await expect(
+				page.getByRole('heading', {
+					name: /STEP 2 - Enter details and invite for roles/i,
+				}),
+			).toBeVisible({timeout: 15_000});
+
+			// Existing-user branch: identity renders as read-only
+			// display blocks (AcceptInvitationFormDisplayItemBasic) —
+			// the editable new-user PkpForm must NOT mount.
+			await expect(
+				page.getByText(existing.email, {exact: true}).first(),
+			).toBeVisible();
+			await expect(
+				page.getByText(existing.givenName, {exact: true}).first(),
+			).toBeVisible();
+			await expect(
+				page.getByText(existing.familyName, {exact: true}).first(),
+			).toBeVisible();
+			await expect(
+				page.locator('input[name="givenName-en"]'),
+				'no editable name form for a resolved existing user',
+			).toHaveCount(0);
+
+			// Current roles table: the held "Reviewer" role shows as a
+			// current-user-group row (name + start date + masthead
+			// column).
+			await expect(
+				page.getByRole('columnheader', {name: 'Journal Masthead'}),
+			).toBeVisible();
+			await expect(
+				page.locator('tr', {hasText: 'Reviewer'}).first(),
+			).toBeVisible();
+
+			// The role select excludes roles already held:
+			// `availableUserGroups` filters out active assignments, so
+			// "Reviewer" is not offered while other defaults (Author,
+			// Section editor, …) are.
+			const optionLabels = (
+				await page.locator('select[name="userGroupId"] option').allTextContents()
+			).map((s) => s.trim());
+			expect(optionLabels).toContain('Author');
+			expect(optionLabels).toContain('Section editor');
+			expect(
+				optionLabels.includes('Reviewer'),
+				`role select must exclude the held Reviewer role (got ${JSON.stringify(optionLabels)})`,
+			).toBeFalsy();
 		},
 	);
 });
 
-function uniqueTag() {
+function uniqueTag(prefix) {
 	const workerIndex = test.info().parallelIndex;
 	const suffix = Math.random().toString(36).slice(2, 8);
-	return `r60-w${workerIndex}-${suffix}`;
+	return `${prefix}-w${workerIndex}-${suffix}`;
 }

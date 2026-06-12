@@ -105,8 +105,14 @@ exports.createMailClient = function ({mailpitUrl, request}) {
 			let lastStatus = null;
 			let lastBodyPreview = null;
 			while (Date.now() < deadline) {
+				// /api/v1/search is the only endpoint that FILTERS by the
+				// query — /api/v1/messages?query=… silently ignores it and
+				// returns the global newest-first list (verified live,
+				// Mailpit 1.29.7). The unscoped form once handed a parallel
+				// agent ANOTHER agent's invitation mail, whose decline link
+				// it then followed (wave 9).
 				const res = await request.get(
-					`${base}/api/v1/messages?query=${encodeURIComponent('to:' + email)}`,
+					`${base}/api/v1/search?query=${encodeURIComponent('to:' + email)}`,
 				);
 				if (!res.ok()) {
 					throw new Error(
