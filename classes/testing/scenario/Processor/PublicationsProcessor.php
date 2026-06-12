@@ -58,6 +58,9 @@ class PublicationsProcessor implements ScenarioProcessor
     /** Fixture used when a galleys[] entry names no file. Same PDF the wizard seed attaches. */
     private const DEFAULT_GALLEY_FIXTURE = 'default-article.pdf';
 
+    /** Fixture used when a mediaFiles[] entry names no file (an IMAGE-genre media file). */
+    private const DEFAULT_MEDIA_FIXTURE = 'dependent-image.png';
+
     /** Publication-level attribute fields the spec accepts directly on a publications[] entry. */
     private const ATTRIBUTE_FIELDS = ['jatsPublicVisibility'];
 
@@ -98,6 +101,13 @@ class PublicationsProcessor implements ScenarioProcessor
                 $galleyFragments = $this->seedGalleys($publicationId, $pubSpec['galleys'], $ctx);
             }
 
+            // Media files likewise live on the production stage's Media tab
+            // and exist before publish.
+            $mediaFileFragments = [];
+            if (!empty($pubSpec['mediaFiles'])) {
+                $mediaFileFragments = $this->seedMediaFiles($publicationId, $pubSpec['mediaFiles'], $ctx);
+            }
+
             if (!empty($pubSpec['published'])) {
                 $this->publish($publicationId, $pubSpec, $ctx);
             }
@@ -112,6 +122,7 @@ class PublicationsProcessor implements ScenarioProcessor
                 'issueId' => $publication->getData('issueId'),
                 'datePublished' => $publication->getData('datePublished'),
                 'galleys' => $galleyFragments,
+                'mediaFiles' => $mediaFileFragments,
             ]);
         }
 
@@ -267,6 +278,118 @@ class PublicationsProcessor implements ScenarioProcessor
         // Repo::submissionFile()->add() also writes the two upload event-log
         // rows and sets galley.submissionFileId (APP\submissionFile\Repository).
         return Repo::submissionFile()->add($submissionFile);
+    }
+
+    /**
+     * Seed Media-tab files on the target publication, mirroring
+     * MediaFilesController::add() (api/v1/submissions/MediaFilesController.php:212-313)
+     * field-for-field — minus the temporary-file hop, which is replaced by
+     * the same bundled-fixture copy the galley seeding uses:
+     *
+     *  - file stored via app('file')->add() into the submission dir
+     *  - fileStage = SUBMISSION_FILE_MEDIA, assocType = ASSOC_TYPE_PUBLICATION,
+     *    assocId = the publication, name defaulted to the (fixture) filename
+     *    keyed by the submission locale, genreId + variantType from the spec
+     *  - Repo::submissionFile()->add() so hooks/event-log fire like an upload
+     *
+     * Entries sharing a `group` label are then linked pairwise through
+     * VariantGroup::link() — the exact call MediaFilesController::linkMany()
+     * makes — with the FIRST entry of the group as the primary (its common
+     * metadata propagates to the sibling, matching the Link Media Files
+     * modal where the web file is the left/primary side). Group size is
+     * capped at VariantGroup::MAX_GROUP_SIZE before any rows are written so
+     * oversized specs fail loudly instead of half-seeding.
+     */
+    private function seedMediaFiles(int $publicationId, array $mediaFileSpecs, ScenarioContext $ctx): array
+    {
+        $submission = Repo::submission()->get($ctx->submissionId());
+        $contextId = $ctx->submissionContextId();
+        $admin = Repo::user()->getByUsername('admin', true);
+        $submissionDir = Repo::submissionFile()->getSubmissionDir($contextId, $submission->getId());
+
+        // Validate group sizes up front (fail loudly before writing rows).
+        $groupCounts = [];
+        foreach ($mediaFileSpecs as $mediaSpec) {
+            if (!empty($mediaSpec['group'])) {
+                $groupCounts[$mediaSpec['group']] = ($groupCounts[$mediaSpec['group']] ?? 0) + 1;
+            }
+        }
+        foreach ($groupCounts as $group => $count) {
+            if ($count > \PKP\submissionFile\VariantGroup::MAX_GROUP_SIZE) {
+                throw new \InvalidArgumentException(
+                    "mediaFiles[] group '{$group}' has {$count} entries — variant groups hold at most "
+                    . \PKP\submissionFile\VariantGroup::MAX_GROUP_SIZE
+                    . ' files (VariantGroup::MAX_GROUP_SIZE), matching the Link Media Files UI.'
+                );
+            }
+        }
+
+        $fragments = [];
+        $filesByGroup = [];
+
+        foreach ($mediaFileSpecs as $mediaSpec) {
+            $fixtureName = $mediaSpec['file'] ?? self::DEFAULT_MEDIA_FIXTURE;
+            $fixturePath = $this->resolveGalleyFixturePath($fixtureName);
+            $genre = GenreLookup::genreForKey($contextId, $mediaSpec['genre'] ?? 'IMAGE');
+
+            $extension = pathinfo($fixtureName, PATHINFO_EXTENSION);
+            $fileId = app()->get('file')->add(
+                $fixturePath,
+                $submissionDir . '/' . uniqid() . ($extension !== '' ? '.' . $extension : '')
+            );
+
+            // Same param set MediaFilesController::add() builds before
+            // Repo::submissionFile()->validate()/add().
+            $submissionFile = Repo::submissionFile()->dao->newDataObject();
+            $submissionFile->setData('fileId', $fileId);
+            $submissionFile->setData('fileStage', SubmissionFile::SUBMISSION_FILE_MEDIA);
+            $submissionFile->setData(
+                'name',
+                $mediaSpec['name'] ?? basename($fixtureName),
+                $submission->getData('locale')
+            );
+            $submissionFile->setData('submissionId', $submission->getId());
+            $submissionFile->setData('uploaderUserId', $admin?->getId());
+            $submissionFile->setData('assocType', Application::ASSOC_TYPE_PUBLICATION);
+            $submissionFile->setData('assocId', $publicationId);
+            $submissionFile->setData('genreId', (int)$genre->getId());
+            $submissionFile->setData('variantType', $mediaSpec['variantType']);
+
+            $submissionFileId = Repo::submissionFile()->add($submissionFile);
+
+            if (!empty($mediaSpec['group'])) {
+                $filesByGroup[$mediaSpec['group']][] = $submissionFileId;
+            }
+
+            $fragments[] = [
+                'id' => $submissionFileId,
+                'name' => $mediaSpec['name'] ?? basename($fixtureName),
+                'variantType' => $mediaSpec['variantType'],
+                'group' => $mediaSpec['group'] ?? null,
+            ];
+        }
+
+        // Pairwise linking per group label — VariantGroup::link() creates the
+        // variant_groups row, stamps variant_group_id on both files and
+        // copies the primary's common media fields onto the sibling.
+        foreach ($filesByGroup as $fileIds) {
+            if (count($fileIds) < 2) {
+                continue;
+            }
+            $primary = Repo::submissionFile()->get($fileIds[0]);
+            $secondary = Repo::submissionFile()->get($fileIds[1]);
+            \PKP\submissionFile\VariantGroup::link($primary, $secondary, $submission->getId());
+        }
+
+        // Echo variantGroupId back so specs can assert on grouping without
+        // re-querying.
+        foreach ($fragments as &$fragment) {
+            $fresh = Repo::submissionFile()->get($fragment['id']);
+            $fragment['variantGroupId'] = $fresh->getData('variantGroupId');
+        }
+        unset($fragment);
+
+        return $fragments;
     }
 
     /**

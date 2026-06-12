@@ -32,6 +32,10 @@ class GenreLookup
      */
     public const FRIENDLY_TO_GENRE_KEY = [
         'ARTICLE' => 'SUBMISSION',
+        // Media-file seeding (publications[].mediaFiles[]): the IMAGE
+        // genre ships supportsFileVariants=1 (registry/genres.xml), the
+        // gate the Media tab's variant-type select keys on.
+        'IMAGE' => 'IMAGE',
     ];
 
     /**

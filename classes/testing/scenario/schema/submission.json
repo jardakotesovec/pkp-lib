@@ -164,6 +164,10 @@
                 "galleys": {
                     "type": "array",
                     "items": { "$ref": "#/$defs/galley" }
+                },
+                "mediaFiles": {
+                    "type": "array",
+                    "items": { "$ref": "#/$defs/mediaFile" }
                 }
             }
         },
@@ -177,6 +181,19 @@
                 "locale": { "type": "string" },
                 "file": { "type": "string", "minLength": 1 },
                 "urlRemote": { "type": "string", "minLength": 1 }
+            }
+        },
+
+        "mediaFile": {
+            "type": "object",
+            "required": ["variantType"],
+            "additionalProperties": false,
+            "properties": {
+                "file": { "type": "string", "minLength": 1 },
+                "name": { "type": "string", "minLength": 1 },
+                "genre": { "type": "string", "enum": ["IMAGE", "ARTICLE"] },
+                "variantType": { "type": "string", "enum": ["web", "high_resolution"] },
+                "group": { "type": "string", "minLength": 1 }
             }
         }
     }

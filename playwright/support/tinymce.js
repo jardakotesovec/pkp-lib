@@ -31,12 +31,18 @@ exports.setTinyMceContent = async function setTinyMceContent(
 			{timeout},
 		);
 	} catch (err) {
-		const editors = await page.evaluate(() =>
-			(window.tinymce?.editors ?? []).map((e) => ({
+		// `tinymce.editors` was removed in TinyMCE 6 — enumerate live
+		// editors via the no-arg `tinymce.get()` instead (OJS ships 7.x;
+		// the old property made this diagnostic always report []).
+		const editors = await page.evaluate(() => {
+			const tiny = window.tinymce;
+			const list =
+				(typeof tiny?.get === 'function' ? tiny.get() : null) ?? [];
+			return list.map((e) => ({
 				id: e.id,
 				initialized: e.initialized,
-			})),
-		);
+			}));
+		});
 		throw new Error(
 			`setTinyMceContent: editor '${editorId}' never initialised. ` +
 			`Mounted editors: ${JSON.stringify(editors)}`,
