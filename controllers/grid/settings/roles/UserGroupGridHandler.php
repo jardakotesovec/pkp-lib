@@ -203,9 +203,15 @@ class UserGroupGridHandler extends GridHandler
         $totalCount = $builder->count();
         $offset = ($page - 1) * $perPage;
 
+        // Key rows by their real id: GridHandler uses the array keys as
+        // row ids, and UserGroupGridRow::initialize() gates the row
+        // actions on !empty($rowId) — with positional 0-based keys the
+        // first row's id is 0, which is empty(), so whichever group the
+        // DB returns first silently loses its edit/delete actions.
         $pageResults = $builder->offset($offset)
             ->limit($perPage)
             ->get()
+            ->keyBy('user_group_id')
             ->all();
 
         // results

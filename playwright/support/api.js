@@ -54,16 +54,19 @@ exports.createApiClient = function createApiClient({request, baseURL}) {
 		baseURL,
 
 		/**
-		 * Fetch a CSRF token from /api/v1/_csrf. Required for authenticated
-		 * POSTs that don't carry a Bearer apiToken.
+		 * DEAD ENDPOINT — kept as a loud failure with directions. There is
+		 * no /api/v1/_csrf route on current main (404 endpointNotFound);
+		 * three wave agents independently rediscovered this. Working
+		 * patterns: `page.evaluate(() => window.pkp.currentUser.csrfToken)`
+		 * from a logged-in page, or scrape `<meta name="csrf-token">` from
+		 * any backend page (PKPTemplateManager emits it).
 		 */
 		async getCsrfToken() {
-			const res = await request.get('/index.php/index/api/v1/_csrf');
-			if (!res.ok()) {
-				throw new Error(`CSRF token request failed: ${res.status()} ${await res.text()}`);
-			}
-			const body = await res.json();
-			return body.csrfToken ?? body.token ?? body;
+			throw new Error(
+				'pkpApi.getCsrfToken is dead: no /api/v1/_csrf endpoint exists. '
+				+ 'Read window.pkp.currentUser.csrfToken from a logged-in page '
+				+ 'or the <meta name="csrf-token"> tag instead.',
+			);
 		},
 
 		/**

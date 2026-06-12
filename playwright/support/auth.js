@@ -93,7 +93,20 @@ exports.ensureAuthStateFor = async function ensureAuthStateFor(
 			timeout: 15_000,
 			waitUntil: 'commit',
 		});
-		await context.storageState({path: authPath});
+		// Write the storage state ATOMICALLY (temp file + rename). The
+		// "last write wins" guarantee above only holds if readers can
+		// never observe a torn write: Playwright's own
+		// context.storageState({path}) writes in place, and a parallel
+		// worker (or a concurrent Playwright run on the same checkout)
+		// that loads the file mid-write fails its context creation with
+		// "SyntaxError: Error reading storage state … Unexpected
+		// non-whitespace character". rename(2) within the same directory
+		// is atomic on POSIX, so readers see either the old or the new
+		// state, never a mix.
+		const state = await context.storageState();
+		const tmpPath = `${authPath}.${process.pid}.${Date.now()}.tmp`;
+		fs.writeFileSync(tmpPath, JSON.stringify(state, null, 2));
+		fs.renameSync(tmpPath, authPath);
 	} finally {
 		await context.close();
 	}

@@ -1,21 +1,45 @@
 <?xml version="1.0"?>
 <!--
-  libxml XML catalog for offline DTD resolution in the Playwright suite.
+  libxml XML catalog for offline DTD/XSD resolution in the Playwright suite.
 
   The test PHP servers run with all outbound HTTP firewalled (a dead
   [proxy] in config.test.inc.php — see seed-test-config.js), which PKP
   also wires into libxml's stream context. Filters that validate their
-  output against remotely-hosted DTDs (PubMed export) would otherwise
-  fail on every run. This catalog maps those DTDs to the local copies
-  committed beside it; start-php-server.js exports XML_CATALOG_FILES
-  pointing here, which libxml2 consults before any network fetch.
+  output against remotely-hosted DTDs/XSDs (PubMed export, Crossref
+  deposit XML) would otherwise fail on every run. This catalog maps
+  those resources to the local copies committed beside it;
+  start-php-server.js exports XML_CATALOG_FILES pointing here, which
+  libxml2 consults before any network fetch.
 
-  Mirrored 2026-06-11 from https://dtd.nlm.nih.gov/ncbi/pubmed/in/
+  PubMed: mirrored 2026-06-11 from https://dtd.nlm.nih.gov/ncbi/pubmed/in/
   (PubMed.dtd 2.8 + its two referenced modules). NLM DTDs are works of
   the US government (public domain). Re-mirror if the app's DOCTYPE
   reference in plugins/importexport/pubmed ever changes version.
+
+  Crossref: mirrored 2026-06-12 from https://www.crossref.org/schemas/
+  (crossref5.4.0.xsd + its full import/include tree: common, languages,
+  mediatypes, fundref, fundingdata, clinicaltrials, AccessIndicators,
+  relations, JATS journalpublishing 1.3d2 + standard-modules incl.
+  MathML3) into crossref/, plus the two absolutely-referenced W3C
+  schemas (xml.xsd 2009, MathML3) into w3/. The schemaLocation URLs are
+  rewritten wholesale via rewriteSystem/rewriteURI; relative includes
+  inside the tree resolve against the already-localized parent paths
+  because the local layout mirrors the remote one. Re-mirror if
+  plugins/generic/crossref/filter/filterConfig.xml ever bumps the
+  schema version (currently crossref5.4.0.xsd).
 -->
 <catalog xmlns="urn:oasis:names:tc:entity:xmlns:xml:catalog">
   <public publicId="-//NLM//DTD PubMed 2.8//EN" uri="PubMed.dtd"/>
   <system systemId="https://dtd.nlm.nih.gov/ncbi/pubmed/in/PubMed.dtd" uri="PubMed.dtd"/>
+
+  <!-- Crossref deposit XML schema tree (validated by XMLTypeDescription
+       on every dois/submissions|issues/export request) -->
+  <rewriteSystem systemIdStartString="https://www.crossref.org/schemas/" rewritePrefix="crossref/"/>
+  <rewriteURI uriStartString="https://www.crossref.org/schemas/" rewritePrefix="crossref/"/>
+
+  <!-- W3C schemas imported by crossref5.4.0.xsd with absolute URLs -->
+  <system systemId="http://www.w3.org/2009/01/xml.xsd" uri="w3/xml-2009.xsd"/>
+  <uri name="http://www.w3.org/2009/01/xml.xsd" uri="w3/xml-2009.xsd"/>
+  <rewriteSystem systemIdStartString="http://www.w3.org/Math/XMLSchema/mathml3/" rewritePrefix="w3/mathml3/"/>
+  <rewriteURI uriStartString="http://www.w3.org/Math/XMLSchema/mathml3/" rewritePrefix="w3/mathml3/"/>
 </catalog>

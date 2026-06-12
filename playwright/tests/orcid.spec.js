@@ -33,7 +33,8 @@ const {EditorialWorkflowPage} = require('../../../../playwright/pages/EditorialW
  * what the success-side script returned by `AuthorizeUserData` would
  * do on the parent. Test 3 below ports that approach verbatim.
  *
- * Four tests, taken together, prove the ORCID pipeline end-to-end:
+ * Seven tests, taken together, prove the ORCID pipeline end-to-end
+ * (rows 1–7 of docs/e2e/plans/orcid.md):
  *
  *   1. **E: config persists** — manager fills the ORCID settings tab on
  *      a scratch journal; the values survive a reload, then a disable
@@ -72,7 +73,38 @@ const {EditorialWorkflowPage} = require('../../../../playwright/pages/EditorialW
  *      "Requesting ORCID record access" mail. Closes the deferred
  *      OJS-only test from the audit.
  *
+ *   6. **R: unverified ORCID renders distinctly** — the counterpart of
+ *      test 4: `orcidIsVerified: false` routes article_details.tpl into
+ *      the `hasVerifiedOrcid()` else-branch, so the reader page shows
+ *      the iD with the "(unauthenticated)" suffix
+ *      (Identity::getOrcidDisplayValue, lib/pkp/classes/identity/
+ *      Identity.php:252-259) instead of the verified treatment.
+ *
+ *   7. **E + M: accept decision dispatches the author authorization
+ *      mail when the journal setting is on** — despite the setting's
+ *      name (`orcidSendMailToAuthorsOnPublication`), the trigger is NOT
+ *      the publish action: SendAuthorOrcidEmail subscribes to
+ *      DecisionAdded and fires on ACCEPT / SKIP_EXTERNAL_REVIEW
+ *      decisions (lib/pkp/classes/observers/listeners/
+ *      SendAuthorOrcidEmail.php:48-54). The test accepts two scratch
+ *      submissions through the UI wizard — one BEFORE the setting is
+ *      ticked (its tag-unique author must get no mail) and one AFTER
+ *      (its tag-unique author's "Requesting ORCID record access" mail
+ *      doubles as the positive control bounding the negative,
+ *      principle 8 / pkpMail.expectNone).
+ *
  * Scope deviations / deferred work:
+ *   - Row 7's planned negative ("a VERIFIED author gets no mail") is
+ *     not implementable against the real listener: SendAuthorOrcidEmail
+ *     filters on `orcidAccessToken` / `orcidAccessExpiresOn` — not on
+ *     `orcidIsVerified` (SendAuthorOrcidEmail.php:63-68) — and the
+ *     scenario `author` passthrough deliberately seeds only
+ *     orcid/orcidIsVerified/email (SubmissionBuilderProcessor.php:
+ *     160-170). A passthrough-"verified" author without an OAuth token
+ *     would still be mailed (correct app behavior: expired/absent
+ *     tokens get re-requested), so the negative was re-anchored on the
+ *     setting gate, which IS the documented contract of the feature.
+ *     Seeding token-bearing authors is a round-2 processor extension.
  *   - The server-side OAuth callback (`AuthorizeUserData::execute`'s
  *     token POST + `setVerifiedOrcidOAuthData` storage path) is not
  *     covered end-to-end. The Cypress suite never covered it either;
@@ -387,8 +419,11 @@ test.describe('ORCID integration', () => {
 				);
 				await expect(orcidLink).toBeVisible({timeout: 15_000});
 				// The verified branch (hasVerifiedOrcid()=true) shows the
-				// raw iD without the "(unauthenticated)" suffix.
+				// raw iD without the "(unauthenticated)" suffix — the
+				// suffix's absence is what distinguishes this from the
+				// unverified treatment covered by the row-6 test below.
 				await expect(orcidLink).toContainText(orcidUrl);
+				await expect(orcidLink).not.toContainText('(unauthenticated)');
 			} finally {
 				await anon.close();
 			}
@@ -517,18 +552,207 @@ test.describe('ORCID integration', () => {
 			expect(mail.Subject).toMatch(/Requesting ORCID record access/i);
 		},
 	);
+
+	test(
+		'an unverified ORCID iD renders with the unauthenticated treatment on the article reader page',
+		async ({pkpApi, browser, baseURL}) => {
+			const tag = uniqueTag(test.info(), 'unv');
+			const orcidUrl = 'https://orcid.org/0000-0002-9876-5432';
+
+			// Same seeding shape as the verified-iD test above, but with
+			// orcidIsVerified=false — the state a contributor is in after
+			// an editor typed/imported an iD that was never confirmed
+			// through the OAuth handshake. article_details.tpl#135-146
+			// takes the else-branch of `$author->hasVerifiedOrcid()`
+			// (lib/pkp/classes/orcid/traits/HasOrcid.php:23-26 — reads
+			// `orcidIsVerified`), and the link label comes from
+			// Identity::getOrcidDisplayValue(), which appends the
+			// localized `orcid.unauthenticated` suffix.
+			const spec = submissionPublished({tag});
+			spec.author = {orcid: orcidUrl, orcidIsVerified: false};
+			const {submission} = await pkpApi.createSubmission(spec);
+
+			// Anonymous reader — explicit empty storageState so a logged-in
+			// session can never leak into the reader-side assertion
+			// (patterns.md "Parallel-load lessons" #8).
+			const anon = await browser.newContext({
+				baseURL,
+				storageState: {cookies: [], origins: []},
+			});
+			try {
+				const page = await anon.newPage();
+				const resp = await page.goto(
+					`/index.php/publicknowledge/article/view/${submission.id}`,
+				);
+				expect(resp?.status()).toBe(200);
+
+				const orcidLink = page.locator(`a[href="${orcidUrl}"]`);
+				await expect(orcidLink).toBeVisible({timeout: 15_000});
+				// The unauthenticated branch renders the iD WITH the
+				// "(unauthenticated)" marker — the distinct treatment the
+				// verified-iD test asserts the absence of.
+				await expect(orcidLink).toContainText(orcidUrl);
+				await expect(orcidLink).toContainText('(unauthenticated)');
+			} finally {
+				await anon.close();
+			}
+		},
+	);
+
+	test(
+		'accepting a submission dispatches the ORCID authorization email to its author only when the journal setting is on',
+		{tag: '@slow'},
+		async ({pkpApi, pkpMail, asUser}) => {
+			// Journal seed + ORCID settings drive + two scenario seeds +
+			// two full decision wizards — needs headroom under
+			// parallel-worker server contention.
+			test.slow();
+			const tag = uniqueTag(test.info(), 'pubmail');
+
+			// Tag-unique throwaway recipients (principle 8): one author
+			// accepted while the send-mail setting is OFF (must receive
+			// nothing) and one accepted after it is ON (the positive
+			// control that bounds the negative).
+			const offAuthorEmail = `orcid-off-${tag}@mailinator.com`;
+			const onAuthorEmail = `orcid-on-${tag}@mailinator.com`;
+
+			// Scratch journal: dbarnes drives Settings + the workflow,
+			// rvaca submits. The contact passthrough points at a real
+			// baseline user because OrcidVariables::setupOrcidVariables
+			// dereferences Repo::user()->getByEmail($context->contactEmail)
+			// — same crash guard as the request-verification test above.
+			const {context} = await pkpApi.createJournal({
+				tag,
+				users: [
+					{username: 'dbarnes', roles: ['manager', 'editor']},
+					{username: 'rvaca', roles: ['author']},
+				],
+				contact: {
+					name: 'Daniel Barnes',
+					email: 'dbarnes@mailinator.com',
+				},
+			});
+
+			const ctx = await asUser('dbarnes');
+			const page = await ctx.newPage();
+			// Enable ORCID (member sandbox API → the member-API mailable
+			// OrcidRequestAuthorAuthorization) but leave the send-mail
+			// setting OFF for the first accept.
+			await enableOrcidViaSettingsForm(page, context.path);
+
+			// Stage-1 submitted submission whose auto-author row carries a
+			// tag-unique email. NOTE: the decision wizard's notifyAuthors
+			// email ALSO lands in this inbox (recipients are the
+			// publication's author rows — observed live: "Your submission
+			// has been sent for copyediting"), so every Mailpit assertion
+			// below scopes by the ORCID mail's subject phrase, never by
+			// recipient alone. The title deliberately avoids the word
+			// "ORCID" so the notifyAuthors mail can't collide with a
+			// content search either.
+			const seedStage1Submission = async (suffix, authorEmail) => {
+				const {submission} = await pkpApi.createSubmission({
+					tag: `${tag}-${suffix}`,
+					journal: context.path,
+					submitter: 'rvaca',
+					section: 'ART',
+					locale: 'en',
+					participants: [{user: 'dbarnes', role: 'editor'}],
+					publications: [
+						{
+							versionStage: 'AO',
+							metadata: {
+								title: {en: 'Publication mail probe'},
+								abstract: {en: '<p>Probe.</p>'},
+							},
+							published: false,
+						},
+					],
+					author: {email: authorEmail},
+				});
+				return submission;
+			};
+
+			// Despite the setting's name, SendAuthorOrcidEmail listens on
+			// DecisionAdded and fires for ACCEPT / SKIP_EXTERNAL_REVIEW
+			// (SendAuthorOrcidEmail.php:48-54) — so the UI action under
+			// test is the stage-1 "Accept and Skip Review" wizard
+			// (2 steps: notifyAuthors + promote files).
+			const workflow = new EditorialWorkflowPage(page);
+			const acceptAndSkipReview = async (submissionId) => {
+				await workflow.goto(submissionId, {journalPath: context.path});
+				await workflow.clickDecision('Accept and Skip Review');
+				await workflow.clickContinue();
+				await workflow.recordDecision('skipped the review stage');
+			};
+
+			// Phase 1 — setting OFF: the accept must NOT dispatch the
+			// ORCID mail to this author (asserted below, bounded by the
+			// phase-2 control message).
+			const offSubmission = await seedStage1Submission(
+				'off',
+				offAuthorEmail,
+			);
+			await acceptAndSkipReview(offSubmission.id);
+
+			// Phase 2 — tick orcidSendMailToAuthorsOnPublication, then
+			// accept the second submission.
+			await enableOrcidViaSettingsForm(page, context.path, {
+				sendAuthorMailOnPublication: true,
+			});
+			const onSubmission = await seedStage1Submission('on', onAuthorEmail);
+			await acceptAndSkipReview(onSubmission.id);
+
+			// Positive: the seeded title carries the per-submission tag
+			// (PublicationsProcessor appends " [tag]") and the mail body
+			// embeds {$submissionTitle}; the subject filter pins the match
+			// to the ORCID authorization mail (the notifyAuthors decision
+			// email to the same inbox carries the tag too).
+			const orcidSubject = 'Requesting ORCID record access';
+			const messages = await pkpMail.find({
+				to: onAuthorEmail,
+				contains: `${tag}-on`,
+				subject: orcidSubject,
+				timeoutMs: 30_000,
+			});
+			expect(messages[0].Subject).toMatch(
+				/Requesting ORCID record access/i,
+			);
+
+			// Negative, bounded by the positive control (principle 8): the
+			// phase-1 accept ran BEFORE the control's accept, so once the
+			// control ORCID mail is in Mailpit, a wrongly-dispatched
+			// phase-1 ORCID mail would be there too. Both terms use the
+			// subject phrase so the legitimate notifyAuthors mail in the
+			// off-author's inbox can never match.
+			await pkpMail.expectNone({
+				to: offAuthorEmail,
+				contains: orcidSubject,
+				afterControl: {to: onAuthorEmail, contains: orcidSubject},
+				timeoutMs: 30_000,
+			});
+		},
+	);
 });
 
 /**
  * Shared helper: drive the OrcidSettings form on a scratch journal far
  * enough to flip `orcidEnabled` and seed valid sandbox credentials, so
  * downstream pages that gate UI on `OrcidManager::isEnabled()` start
- * rendering the ORCID surface.
+ * rendering the ORCID surface. Idempotent — safe to call again on the
+ * same journal to layer on the optional settings below.
  *
  * @param {import('@playwright/test').Page} page
  * @param {string} contextPath
+ * @param {{sendAuthorMailOnPublication?: boolean}} [opts]
+ *   sendAuthorMailOnPublication additionally ticks the
+ *   `orcidSendMailToAuthorsOnPublication` checkbox (the gate
+ *   SendAuthorOrcidEmail checks on accept decisions).
  */
-async function enableOrcidViaSettingsForm(page, contextPath) {
+async function enableOrcidViaSettingsForm(
+	page,
+	contextPath,
+	{sendAuthorMailOnPublication = false} = {},
+) {
 	await page.goto(
 		`/index.php/${contextPath}/management/settings/access`,
 	);
@@ -545,6 +769,12 @@ async function enableOrcidViaSettingsForm(page, contextPath) {
 	await form
 		.locator('input[name="orcidClientSecret"]')
 		.fill('TEST_SECRET');
+	if (sendAuthorMailOnPublication) {
+		await form
+			.locator('input[name="orcidSendMailToAuthorsOnPublication"]')
+			.first()
+			.check();
+	}
 	await Promise.all([
 		page.waitForResponse(
 			(res) =>
