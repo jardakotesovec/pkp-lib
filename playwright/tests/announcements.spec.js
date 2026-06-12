@@ -10,7 +10,7 @@ const {setTinyMceContent} = require('../support/tinymce.js');
  * Uses E0 scratch journals so creating / editing / deleting rows
  * can't leak back to the bootstrapped publicknowledge journal.
  *
- * Four tests:
+ * Five tests:
  *   1. CRUD round-trip on the announcements admin (create + edit +
  *      delete via the listPanel actions).
  *   2. Enable/Disable toggle on Website Settings → Setup → Announcements
@@ -20,6 +20,12 @@ const {setTinyMceContent} = require('../support/tinymce.js');
  *      announcement on an enableAnnouncements-true journal.
  *   4. Sitemap XML at `/{journal}/sitemap` includes an announcement
  *      URL once enableAnnouncements is true.
+ *   5. Expiry (plan row 5): an announcement whose dateExpire is in the
+ *      past stays in the admin list but is filtered off the public
+ *      /announcement page (Announcement::withActiveByDate compares
+ *      date_expire > now). The form's dateExpire is a plain FieldText
+ *      validated as Y-m-d only (announcement.json schema) — no
+ *      date-picker gate, so a past date types straight in.
  */
 
 function uniqueTag() {
@@ -301,6 +307,115 @@ test.describe('Announcements', () => {
 			// a substring match is enough (the regex catches both
 			// /announcement listing and /announcement/view/{id} entries).
 			expect(xml).toMatch(/<loc>[^<]*announcement[^<]*<\/loc>/i);
+		},
+	);
+
+	test(
+		'expired announcement is hidden from readers but kept in the admin list',
+		{tag: '@regression'},
+		async ({pkpApi, asUser, browser, baseURL}) => {
+			const tag = uniqueTag();
+			const {context} = await pkpApi.createJournal({
+				tag,
+				name: {en: `Expiry scratch ${tag}`},
+				users: [{username: 'dbarnes', roles: ['manager']}],
+				enableAnnouncements: true,
+			});
+			const ctx = await asUser('dbarnes');
+			const page = await ctx.newPage();
+
+			const currentTitle = `Current notice ${tag}`;
+			const expiredTitle = `Expired notice ${tag}`;
+			// withActiveByDate keeps rows with date_expire strictly in
+			// the future, so "expired" needs a past date; 3 days back
+			// keeps ≥1 day of slack on either side of any server/client
+			// timezone skew.
+			const expiredDate = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)
+				.toISOString()
+				.slice(0, 10);
+
+			// Create one current (no expiry) and one expired announcement
+			// through the same Add Announcement dialog flow as test 1.
+			await page.goto(
+				`/index.php/${context.path}/management/settings/announcements`,
+			);
+			await expect(
+				page.getByRole('button', {name: 'Add Announcement'}),
+			).toBeVisible({timeout: 15_000});
+
+			for (const spec of [
+				{title: currentTitle, body: `Current body ${tag}.`},
+				{
+					title: expiredTitle,
+					body: `Expired body ${tag}.`,
+					dateExpire: expiredDate,
+				},
+			]) {
+				await page
+					.getByRole('button', {name: 'Add Announcement'})
+					.click();
+				const dialog = page.getByRole('dialog');
+				await dialog
+					.locator('#announcement-title-control-en')
+					.fill(spec.title);
+				await setTinyMceContent(
+					page,
+					'announcement-descriptionShort-control-en',
+					`<p>${spec.body}</p>`,
+				);
+				if (spec.dateExpire) {
+					// dateExpire is a non-multilingual FieldText —
+					// control id carries no locale suffix.
+					await dialog
+						.locator('#announcement-dateExpire-control')
+						.fill(spec.dateExpire);
+				}
+				await dialog
+					.getByRole('button', {name: 'Save', exact: true})
+					.click();
+				await expect(
+					page.locator('#announcements .listPanel__itemSummary', {
+						hasText: spec.title,
+					}),
+				).toBeVisible({timeout: 15_000});
+			}
+
+			// Admin list keeps both — the management ListPanel queries
+			// /api/v1/announcements without the active-by-date scope.
+			await expect(
+				page.locator('#announcements .listPanel__itemSummary', {
+					hasText: currentTitle,
+				}),
+			).toBeVisible();
+			await expect(
+				page.locator('#announcements .listPanel__itemSummary', {
+					hasText: expiredTitle,
+				}),
+			).toBeVisible();
+
+			// Public /announcement lists only the current one. Explicit
+			// empty storageState — plain newContext would inherit any
+			// file-level session (patterns.md parallel-load lesson 8).
+			const anon = await browser.newContext({
+				baseURL,
+				storageState: {cookies: [], origins: []},
+			});
+			try {
+				const reader = await anon.newPage();
+				const resp = await reader.goto(
+					`/index.php/${context.path}/announcement`,
+				);
+				expect(resp?.status()).toBe(200);
+				// Positive assertion bounds the negative one: once the
+				// current announcement is rendered, the page is complete
+				// and the expired title's absence is meaningful.
+				await expect(reader.getByText(currentTitle).first()).toBeVisible(
+					{timeout: 15_000},
+				);
+				await expect(reader.getByText(expiredTitle)).toHaveCount(0);
+			} finally {
+				await anon.close();
+			}
 		},
 	);
 });

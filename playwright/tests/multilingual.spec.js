@@ -43,6 +43,25 @@ const {EditorialWorkflowPage} = require('../../../../playwright/pages/EditorialW
  * fr_CA-supporting scratch journal can host an in-review submission
  * whose Title & Abstract panel is then driven through the FR locale
  * tab.
+ *
+ * Rows 4–6 of docs/e2e/plans/languages-locales.md extend the file:
+ *
+ *   4. The Submission Languages grid (the second grid on Website >
+ *      Setup > Languages, SubmissionLanguageGridHandler) gates the
+ *      wizard Start form's "Submission Language" radio —
+ *      StartSubmission::addLanguage bails below 2 supported
+ *      submission locales.
+ *   5. The fr_CA UI flag drives the reader-facing language switcher
+ *      (languageToggle sidebar block; scratch journals ship an empty
+ *      `sidebar` setting, so the test first places the block via
+ *      Website > Appearance > Setup), and /{journal}/fr_CA/ renders
+ *      French chrome.
+ *   6. The Languages grid's primary radio (setContextPrimaryLocale —
+ *      kebab-cased to set-context-primary-locale on the component
+ *      router) flips the journal primary locale; an anonymous visitor
+ *      whose Accept-Language matches no supported locale now gets the
+ *      French home by default (Locale::getPreferredLocale falls back
+ *      to the context primary locale).
  */
 
 function uniqueTag() {
@@ -83,9 +102,21 @@ async function toggleLanguageGridCheckbox(page, checkbox, expectedSetting) {
  * Open the Website settings page and navigate to Setup -> Languages.
  * The page is a Vue tab shell; Setup is a top-level tab whose panel
  * embeds the Languages sub-tab.
+ *
+ * Pass `locale` to pin the management UI's locale via the URL prefix —
+ * needed after a primary-locale flip (row 6), where an unprefixed URL
+ * would otherwise serve the French backend and the 'Languages' tab
+ * lookup ('Langues') would miss.
+ *
+ * @param {import('@playwright/test').Page} page
+ * @param {string} journalPath
+ * @param {{locale?: string}} [opts]
  */
-async function openLanguagesGrid(page, journalPath) {
-	await page.goto(`/index.php/${journalPath}/management/settings/website`);
+async function openLanguagesGrid(page, journalPath, {locale} = {}) {
+	const prefix = locale ? `/${locale}` : '';
+	await page.goto(
+		`/index.php/${journalPath}${prefix}/management/settings/website`,
+	);
 	await page.locator('#setup-button').click();
 	await page.getByRole('tab', {name: 'Languages'}).click();
 	// The Languages grid is a legacy jQuery grid loaded via
@@ -93,6 +124,58 @@ async function openLanguagesGrid(page, journalPath) {
 	await expect(
 		page.locator('input[id^="select-cell-fr_CA-uiLocale"]'),
 	).toBeVisible();
+}
+
+/**
+ * Open the Languages sub-tab and wait for the SECOND grid (Submission
+ * Languages, SubmissionLanguageGridHandler) to arrive — it loads via
+ * its own load_url_in_div, after the website-languages grid.
+ *
+ * @param {import('@playwright/test').Page} page
+ * @param {string} journalPath
+ */
+async function openSubmissionLanguagesGrid(page, journalPath) {
+	await openLanguagesGrid(page, journalPath);
+	await expect(
+		page.locator('input[id^="select-cell-fr_CA-submissionLocale"]'),
+	).toBeVisible({timeout: 15_000});
+}
+
+/**
+ * Navigate to the wizard Start form on a scratch journal and wait for
+ * it to hydrate (heading + the title field's TinyMCE iframe).
+ *
+ * @param {import('@playwright/test').Page} page
+ * @param {string} journalPath
+ */
+async function gotoWizardStart(page, journalPath) {
+	await page.goto(`/index.php/${journalPath}/submission`);
+	await expect(
+		page.getByRole('heading', {name: 'Make a Submission'}),
+	).toBeVisible({timeout: 15_000});
+	await expect(
+		page.locator('#startSubmission-title-control_ifr'),
+	).toBeAttached({timeout: 15_000});
+}
+
+/**
+ * Fresh anonymous context. The explicit empty storageState matters:
+ * new contexts otherwise inherit the file-level storage state
+ * (patterns.md parallel-load lesson 8). `locale` sets the browser's
+ * Accept-Language — rows 5–6 use 'de-DE' so the visitor's language
+ * preference matches NO supported locale and the journal's own default
+ * decides (Locale::getPreferredLocale).
+ *
+ * @param {import('@playwright/test').Browser} browser
+ * @param {string} baseURL
+ * @param {{locale?: string}} [opts]
+ */
+async function anonReaderContext(browser, baseURL, {locale} = {}) {
+	return browser.newContext({
+		baseURL,
+		storageState: {cookies: [], origins: []},
+		...(locale ? {locale} : {}),
+	});
 }
 
 test.describe('Multilingual', () => {
@@ -354,6 +437,297 @@ test.describe('Multilingual', () => {
 			expect(pubResp.ok()).toBeTruthy();
 			const pub = await pubResp.json();
 			expect(pub.title?.fr_CA).toContain(frenchTitle);
+		},
+	);
+
+	// Row 4 — the Submission Languages grid gates the wizard's
+	// submission-language picker. The scratch journal seeds fr_CA as a
+	// supported submission locale, so the test asserts the offered
+	// state first, disables the locale through the grid (not offered),
+	// then re-enables it (offered again) — both directions of the gate.
+	test(
+		'submission-locale toggle gates the wizard language choice',
+		{tag: '@regression'},
+		async ({pkpApi, asUser}) => {
+			const tag = uniqueTag();
+			const {context} = await pkpApi.createJournal({
+				tag,
+				supportedLocales: ['en', 'fr_CA'],
+				users: [{username: 'dbarnes', roles: ['manager']}],
+			});
+			const ctx = await asUser('dbarnes');
+			const page = await ctx.newPage();
+
+			// With 2 supported submission locales the Start form renders
+			// the "Submission Language" radio with both options.
+			await gotoWizardStart(page, context.path);
+			const languageField = page.locator('.pkpFormField--options', {
+				has: page.locator('legend', {hasText: 'Submission Language'}),
+			});
+			await expect(languageField).toBeVisible();
+			await expect(
+				languageField.locator('label', {hasText: 'English'}),
+			).toBeVisible();
+			await expect(
+				languageField.locator('label', {hasText: 'French (Canada)'}),
+			).toBeVisible();
+
+			// Disable fr_CA for submissions via the second grid. The cell
+			// checkbox posts saveLanguageSetting with
+			// setting=supportedSubmissionLocales; the default submission
+			// locale is en, so the guard against removing the default
+			// doesn't trip.
+			await openSubmissionLanguagesGrid(page, context.path);
+			const submissionLocaleBox = page.locator(
+				'input[id^="select-cell-fr_CA-submissionLocale"]',
+			);
+			await expect(submissionLocaleBox).toBeChecked();
+			await toggleLanguageGridCheckbox(
+				page,
+				submissionLocaleBox,
+				'supportedSubmissionLocales',
+			);
+			await expect(
+				page.locator('input[id^="select-cell-fr_CA-submissionLocale"]'),
+			).not.toBeChecked();
+
+			// Down to a single submission locale, the Start form drops
+			// the language radio entirely (StartSubmission::addLanguage
+			// bails below 2) — French is no longer offered.
+			await gotoWizardStart(page, context.path);
+			await expect(
+				page.locator('legend', {hasText: 'Submission Language'}),
+			).toHaveCount(0);
+
+			// Re-enable → the picker returns with French on offer.
+			await openSubmissionLanguagesGrid(page, context.path);
+			await toggleLanguageGridCheckbox(
+				page,
+				page.locator('input[id^="select-cell-fr_CA-submissionLocale"]'),
+				'supportedSubmissionLocales',
+			);
+			await expect(
+				page.locator('input[id^="select-cell-fr_CA-submissionLocale"]'),
+			).toBeChecked();
+
+			await gotoWizardStart(page, context.path);
+			await expect(
+				page
+					.locator('.pkpFormField--options', {
+						has: page.locator('legend', {
+							hasText: 'Submission Language',
+						}),
+					})
+					.locator('label', {hasText: 'French (Canada)'}),
+			).toBeVisible();
+		},
+	);
+
+	// Row 5 — the fr_CA UI flag exposes the reader-facing language
+	// switcher. Scratch journals ship an empty `sidebar` setting, so
+	// the manager first places the Language Toggle block (enabled by
+	// default via its settings.xml) through Website > Appearance >
+	// Setup — the block, not the theme, is the front-end switcher.
+	test(
+		'UI locale exposes the front-end language switcher',
+		{tag: '@regression'},
+		async ({pkpApi, asUser, browser, baseURL}) => {
+			const tag = uniqueTag();
+			const {context} = await pkpApi.createJournal({
+				tag,
+				supportedLocales: ['en', 'fr_CA'],
+				users: [{username: 'dbarnes', roles: ['manager']}],
+			});
+			const ctx = await asUser('dbarnes');
+			const page = await ctx.newPage();
+
+			// Put the Language Toggle block in the sidebar.
+			await page.goto(
+				`/index.php/${context.path}/management/settings/website`,
+			);
+			await page.locator('#appearance-button').click();
+			await page.locator('#appearance-setup-button').click();
+			const blockOption = page.locator(
+				'#appearance-setup input[name="sidebar"][value="languagetoggleblockplugin"]',
+			);
+			await expect(blockOption).toBeVisible({timeout: 15_000});
+			await blockOption.check();
+			await Promise.all([
+				page.waitForResponse(
+					(res) =>
+						/\/api\/v1\/contexts\/\d+/.test(res.url()) &&
+						res.ok() &&
+						['POST', 'PUT'].includes(res.request().method()),
+					{timeout: 15_000},
+				),
+				page
+					.locator('#appearance-setup form')
+					.first()
+					.getByRole('button', {name: 'Save', exact: true})
+					.click(),
+			]);
+
+			// Anonymous reader: the switcher offers Français, and the
+			// fr_CA-prefixed URL renders French chrome (html lang +
+			// the default user nav's login link in French).
+			const anonBilingual = await anonReaderContext(browser, baseURL);
+			try {
+				const reader = await anonBilingual.newPage();
+				const resp = await reader.goto(`/index.php/${context.path}/en`);
+				expect(resp?.status()).toBe(200);
+				const block = reader.locator('.block_language');
+				await expect(block).toBeVisible();
+				// The block labels locales with their own-language display
+				// names, lowercase and without the region suffix:
+				// "English" / "français".
+				await expect(
+					block.getByRole('link', {name: /français/i}),
+				).toBeVisible();
+
+				const frResp = await reader.goto(
+					`/index.php/${context.path}/fr_CA`,
+				);
+				expect(frResp?.status()).toBe(200);
+				await expect(reader.locator('html')).toHaveAttribute(
+					'lang',
+					'fr-CA',
+				);
+				await expect(
+					reader.getByRole('link', {name: 'Se connecter'}).first(),
+				).toBeVisible();
+			} finally {
+				await anonBilingual.close();
+			}
+
+			// Manager turns the fr_CA UI flag off → only one UI locale
+			// remains, so the block renders nothing for readers.
+			await openLanguagesGrid(page, context.path);
+			await toggleLanguageGridCheckbox(
+				page,
+				page.locator('input[id^="select-cell-fr_CA-uiLocale"]'),
+				'supportedLocales',
+			);
+			await expect(
+				page.locator('input[id^="select-cell-fr_CA-uiLocale"]'),
+			).not.toBeChecked();
+
+			const anonMonolingual = await anonReaderContext(browser, baseURL);
+			try {
+				const reader = await anonMonolingual.newPage();
+				const resp = await reader.goto(`/index.php/${context.path}/`);
+				expect(resp?.status()).toBe(200);
+				// Positive landmark first (English chrome rendered), then
+				// the bounded negative: no language switcher.
+				await expect(
+					reader.getByRole('link', {name: 'Login'}).first(),
+				).toBeVisible({timeout: 15_000});
+				await expect(reader.locator('.block_language')).toHaveCount(0);
+				await expect(
+					reader.getByRole('link', {name: /français/i}),
+				).toHaveCount(0);
+			} finally {
+				await anonMonolingual.close();
+			}
+		},
+	);
+
+	// Row 6 — the Languages grid's primary radio flips the journal's
+	// primary locale, and an anonymous visitor with no matching
+	// language preference now gets French by default. Both anonymous
+	// probes use Accept-Language: de-DE (matches neither supported
+	// locale) so the journal's primary — not the visitor's browser —
+	// decides, and each probe gets a FRESH context because the first
+	// front-end hit pins `currentLocale` into the session/cookie
+	// (PKPPageRouter::_setLocale).
+	test(
+		'changing primary locale flips the front-end default',
+		{tag: '@regression'},
+		async ({pkpApi, asUser, browser, baseURL}) => {
+			const tag = uniqueTag();
+			const {context} = await pkpApi.createJournal({
+				tag,
+				supportedLocales: ['en', 'fr_CA'],
+				users: [{username: 'dbarnes', roles: ['manager']}],
+			});
+
+			// Positive control: with primary=en, the unmatched-language
+			// visitor lands on the en-prefixed home.
+			const anonBefore = await anonReaderContext(browser, baseURL, {
+				locale: 'de-DE',
+			});
+			try {
+				const reader = await anonBefore.newPage();
+				const resp = await reader.goto(`/index.php/${context.path}/`);
+				expect(resp?.status()).toBe(200);
+				expect(reader.url()).toContain(`/${context.path}/en`);
+				await expect(reader.locator('html')).toHaveAttribute(
+					'lang',
+					'en',
+				);
+			} finally {
+				await anonBefore.close();
+			}
+
+			const ctx = await asUser('dbarnes');
+			const page = await ctx.newPage();
+			await openLanguagesGrid(page, context.path);
+
+			// en starts as primary; fr_CA's radio carries the
+			// setContextPrimaryLocale AjaxAction (kebab-cased to
+			// set-context-primary-locale on the component router —
+			// patterns.md parallel-load lesson 11).
+			await expect(
+				page.locator('input[id^="select-cell-en-contextPrimary"]'),
+			).toBeChecked();
+			const frPrimary = page.locator(
+				'input[id^="select-cell-fr_CA-contextPrimary"]',
+			);
+			await expect(frPrimary).not.toBeChecked();
+
+			const saved = page.waitForResponse(
+				(res) =>
+					res.url().includes('set-context-primary-locale') &&
+					res.status() === 200,
+				{timeout: 15_000},
+			);
+			await frPrimary.click();
+			await saved;
+			// The handler answers with a full-grid DataChangedEvent; the
+			// re-rendered rows show fr_CA as primary.
+			await expect(
+				page.locator('input[id^="select-cell-fr_CA-contextPrimary"]'),
+			).toBeChecked({timeout: 15_000});
+
+			// Reload the grid — pin /en/ so the manager UI stays English
+			// now that the journal's primary is French.
+			await openLanguagesGrid(page, context.path, {locale: 'en'});
+			await expect(
+				page.locator('input[id^="select-cell-fr_CA-contextPrimary"]'),
+			).toBeChecked();
+			await expect(
+				page.locator('input[id^="select-cell-en-contextPrimary"]'),
+			).not.toBeChecked();
+
+			// A fresh unmatched-language visitor now defaults to the
+			// French home.
+			const anonAfter = await anonReaderContext(browser, baseURL, {
+				locale: 'de-DE',
+			});
+			try {
+				const reader = await anonAfter.newPage();
+				const resp = await reader.goto(`/index.php/${context.path}/`);
+				expect(resp?.status()).toBe(200);
+				expect(reader.url()).toContain(`/${context.path}/fr_CA`);
+				await expect(reader.locator('html')).toHaveAttribute(
+					'lang',
+					'fr-CA',
+				);
+				await expect(
+					reader.getByRole('link', {name: 'Se connecter'}).first(),
+				).toBeVisible();
+			} finally {
+				await anonAfter.close();
+			}
 		},
 	);
 });

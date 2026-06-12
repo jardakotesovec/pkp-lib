@@ -3,20 +3,19 @@ const {test, expect} = require('../support/base-test.js');
 const submissionInReview = require('../../../../playwright/fixtures/scenarios/submission-in-review.js');
 
 /**
- * Reviewer-recommendation customisation — row #6 in
- * docs/e2e-playwright-migration.md.
+ * Reviewer-recommendation configuration — docs/e2e/plans/review-settings.md
+ * row 5 (this spec backs that row; rows 1–4 live in review-settings.spec.js).
  *
- * Ports cypress/tests/integration/ReviewerRecommendation.cy.js.
- *
- * Covers config-only concerns (defaults render, CRUD custom, toggle
- * active) plus the two scenarios that depend on a submission in review
- * with the recommendation already in use:
- *   - "Used recommendation can't be edited / deleted" — exercises the
- *     `removable` attribute on ReviewerRecommendation, which gates the
- *     row's More-Actions menu in the manager grid.
- *   - "Inactive recommendation not offered in review form" — exercises
- *     the dropdown on Step 3 of the reviewer wizard (the ReviewerForm
- *     filters recommendations by status).
+ * Ports cypress/tests/integration/ReviewerRecommendation.cy.js, split
+ * into one test per concern:
+ *   1. defaults render with non-empty type metadata
+ *   2. custom-recommendation CRUD (add / edit / delete)
+ *   3. active/inactive toggle on an unused recommendation
+ *   4. in-use lock — a recommendation referenced by a completed review
+ *      exposes no Edit/Delete (the `removable` attribute gates the
+ *      row's More-Actions menu in the manager grid)
+ *   5. an inactive recommendation is absent from the dropdown on Step 3
+ *      of the reviewer wizard (the ReviewerForm filters by status)
  */
 
 const DEFAULT_RECOMMENDATIONS = [
@@ -234,7 +233,6 @@ test.describe('Reviewer-recommendation customisation', () => {
 			// review marked completed with recommendation 'accept'. This
 			// flips the corresponding recommendation row's `removable`
 			// attribute to false in the manager grid.
-			const submissionInReview = require('../../../../playwright/fixtures/scenarios/submission-in-review.js');
 			await pkpApi.createSubmission(
 				submissionInReview({
 					tag,
@@ -329,7 +327,6 @@ test.describe('Reviewer-recommendation customisation', () => {
 			// 'invited' (not 'completed') so the reviewer wizard renders Step
 			// 1; we drive Steps 1+2 below to reach Step 3, where the
 			// recommendation select renders.
-			const submissionInReview = require('../../../../playwright/fixtures/scenarios/submission-in-review.js');
 			const {submission} = await pkpApi.createSubmission(
 				submissionInReview({
 					tag,

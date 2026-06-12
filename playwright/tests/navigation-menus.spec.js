@@ -1,8 +1,9 @@
 // @ts-check
 const {test, expect} = require('../support/base-test.js');
 const {waitForJQueryIdle} = require('../support/jquery.js');
+const {setTinyMceContent} = require('../support/tinymce.js');
 /**
- * Navigation menus — row #2 in docs/e2e-playwright-migration.md.
+ * Navigation menus — docs/e2e/plans/navigation-menus.md (all 4 rows).
  *
  * Ports lib/pkp/cypress/tests/integration/NavigationMenus.cy.js.
  *
@@ -93,11 +94,34 @@ function menuFormModal(page) {
  * `<a class="pkp_controllers_linkAction pkp_linkaction_addNavigationMenu">`
  * by the legacy grid handler — `getByRole('button', {name: 'Add Menu'})`
  * does NOT match (it's an anchor, not a button).
+ *
+ * Click-retry rationale: after a menu save the legacy grid refreshes
+ * itself (dataChanged → fetch-grid → full HTML replace), and a click
+ * issued in that window can land on the about-to-be-detached anchor —
+ * focus registers, but the (re)bound handler never runs and no modal
+ * opens (observed once under workers=2). jQuery-idle narrows the
+ * window; the retry closes it.
  */
 async function openAddMenuModal(page) {
-	await page.locator('a.pkp_linkaction_addNavigationMenu').click();
 	const modal = menuFormModal(page);
-	await expect(modal).toHaveCount(1, {timeout: 20_000});
+	await waitForJQueryIdle(page);
+	for (let attempt = 0; ; attempt++) {
+		await page.locator('a.pkp_linkaction_addNavigationMenu').click();
+		try {
+			await expect(modal).toHaveCount(1, {timeout: 7_000});
+			break;
+		} catch (err) {
+			if (attempt >= 2) {
+				throw err;
+			}
+			// A slow-but-successful open may land just past the expect
+			// window — never re-click into the overlay in that case.
+			if ((await modal.count()) > 0) {
+				break;
+			}
+			await waitForJQueryIdle(page);
+		}
+	}
 	await expect(modal.locator('[data-cy="assigned-panel"]')).toBeVisible();
 	await expect(modal.locator('[data-cy="unassigned-panel"]')).toBeVisible();
 	return modal;
@@ -110,13 +134,28 @@ async function openAddMenuModal(page) {
  * action).
  */
 async function openEditMenuModalByTitle(page, title) {
-	await page
-		.locator('#navigationMenuGridContainer')
-		.getByText(title, {exact: true})
-		.first()
-		.click();
 	const modal = menuFormModal(page);
-	await expect(modal).toHaveCount(1, {timeout: 20_000});
+	// Same refresh-race guard as openAddMenuModal.
+	await waitForJQueryIdle(page);
+	for (let attempt = 0; ; attempt++) {
+		await page
+			.locator('#navigationMenuGridContainer')
+			.getByText(title, {exact: true})
+			.first()
+			.click();
+		try {
+			await expect(modal).toHaveCount(1, {timeout: 7_000});
+			break;
+		} catch (err) {
+			if (attempt >= 2) {
+				throw err;
+			}
+			if ((await modal.count()) > 0) {
+				break;
+			}
+			await waitForJQueryIdle(page);
+		}
+	}
 	await expect(modal.locator('[data-cy="assigned-panel"]')).toBeVisible();
 	return modal;
 }
@@ -132,6 +171,64 @@ async function cancelWithUnsavedChanges(page, modal) {
 	await expect(dialog).toBeVisible({timeout: 10_000});
 	await dialog.getByRole('button', {name: 'Yes'}).click();
 	await expect(modal).toHaveCount(0, {timeout: 10_000});
+}
+
+/**
+ * Drag a NavigationMenuEditor item from the unassigned panel onto the
+ * TOP EDGE of the assigned panel's first root item via raw mouse
+ * events, inserting it at root position 0. The editor's DnD is
+ * @atlaskit/pragmatic-drag-and-drop (native HTML5 drag events) —
+ * Playwright Chromium synthesizes those from mouse down/move/up, but
+ * needs ≥2 moves after mousedown for the dragover stream to reach the
+ * target (same constraint as the jQuery-UI sortable pattern in OJS's
+ * IssuePage#dragRowAbove).
+ *
+ * Targeting notes (both alternatives failed live):
+ *   - The first root item's top strip resolves `reorder-above` in the
+ *     tree-item hitbox → root index 0. Slight overshoot lands in the
+ *     index-0 DropZone whose explicit payload is ALSO {parentId: null,
+ *     index: 0} — either way the item ends up at root level.
+ *   - Dropping in the panel's free bottom area is NOT root-safe: on
+ *     the drag path the trailing child-level DropZone expands a
+ *     DropGhostPreview under the cursor (DropZone.vue showGhost drops
+ *     the h-0 wrapper) and swallows the drop, nesting the item into
+ *     the last root item's CSS-hidden submenu.
+ *   - The first item is only a safe target AFTER scrolling the editor
+ *     to the top of the side modal's scroll area; otherwise the modal
+ *     auto-scroll leaves it clipped under the sticky modal header and
+ *     the drop coordinates hit the header instead.
+ *
+ * @param {import('@playwright/test').Page} page
+ * @param {import('@playwright/test').Locator} modal the NavigationMenuManagerFormModal locator
+ * @param {import('@playwright/test').Locator} source item to move ([data-menu-item-title] node)
+ */
+async function dragMenuItemToAssignedRoot(page, modal, source) {
+	const editor = modal.locator('[data-cy="navigation-menu-editor"]');
+	await editor.evaluate((el) => el.scrollIntoView({block: 'start'}));
+	const target = modal
+		.locator('[data-cy="panel-content-assigned"] [data-menu-item-title]')
+		.first();
+	await expect(target).toBeVisible();
+	await source.hover(); // auto-waits for visibility + stability
+	const sourceBox = await source.boundingBox();
+	const targetBox = await target.boundingBox();
+	if (!sourceBox || !targetBox) {
+		throw new Error('dragMenuItemToAssignedRoot: item has no bounding box');
+	}
+	const startX = sourceBox.x + sourceBox.width / 2;
+	const startY = sourceBox.y + sourceBox.height / 2;
+	await page.mouse.move(startX, startY);
+	await page.mouse.down();
+	// First small move fires dragstart…
+	await page.mouse.move(startX, startY - 5);
+	// …then walk to just inside the target's top edge so the hitbox
+	// resolves `reorder-above` rather than `make-child`.
+	await page.mouse.move(
+		targetBox.x + targetBox.width / 2,
+		targetBox.y + 3,
+		{steps: 15},
+	);
+	await page.mouse.up();
 }
 
 /**
@@ -373,7 +470,222 @@ test.describe('Navigation menus', () => {
 					hasText: updatedTitle,
 				}),
 			).toHaveCount(0, {timeout: 15_000});
-		
+
+		},
+	);
+
+	test(
+		'custom item assigned to the primary menu renders on the front end',
+		{tag: '@regression'},
+		async ({pkpApi, asUser, browser, baseURL}) => {
+			// Plan row 3. A custom item WITH content is created through the
+			// legacy item form, assigned into the default Primary
+			// Navigation Menu via the Vue NavigationMenuEditor (DnD is the
+			// editor's only move mechanism — no button/keyboard fallback
+			// exists, see dragMenuItemAbove), and must then render in the
+			// anonymous primary nav, linking to its
+			// navigationMenuItemViewContent page.
+			const tag = uniqueTag();
+			const {context} = await pkpApi.createJournal({
+				tag,
+				name: {en: `Nav Front Scratch ${tag}`},
+				users: [{username: 'dbarnes', roles: ['manager']}],
+			});
+			const ctx = await asUser('dbarnes');
+			const page = await ctx.newPage();
+			await openNavigationTab(page, context.path);
+
+			const itemTitle = `Custom Page ${tag}`;
+			const itemPath = `custom-${tag}`;
+			const contentMarker = `Custom page content for ${tag}`;
+
+			// --- 1. Create the custom item with content ---
+			await page
+				.locator(
+					'#navigationMenuItemsGridContainer a.pkp_linkaction_addNavigationMenuItem',
+				)
+				.click();
+			const itemForm = page.locator('form#navigationMenuItemsForm');
+			await expect(itemForm).toBeVisible({timeout: 10_000});
+			await itemForm
+				.locator('select[name="menuItemType"]')
+				.selectOption('NMI_TYPE_CUSTOM');
+			await itemForm.locator('input[name="title[en]"]').fill(itemTitle);
+			await itemForm.locator('input[name="path"]').fill(itemPath);
+			// The content field is a legacy fbv rich textarea whose id is
+			// runtime-suffixed ($FBV_uniqId, patterns.md pitfall 8) —
+			// resolve the generated id off the stable name attribute.
+			const contentId = await itemForm
+				.locator('textarea[name="content[en]"]')
+				.getAttribute('id');
+			await setTinyMceContent(
+				page,
+				String(contentId),
+				`<p>${contentMarker}</p>`,
+			);
+			await itemForm.getByRole('button', {name: 'Save'}).click();
+			await expect(itemForm).toHaveCount(0, {timeout: 15_000});
+			await expect(
+				page
+					.locator('#navigationMenuItemsGridContainer tr.gridRow', {
+						hasText: itemTitle,
+					})
+					.first(),
+			).toBeVisible({timeout: 15_000});
+
+			// --- 2. Assign it into the default Primary Navigation Menu ---
+			const modal = await openEditMenuModalByTitle(
+				page,
+				'Primary Navigation Menu',
+			);
+			const source = modal.locator(
+				`[data-cy="panel-content-unassigned"] [data-menu-item-title="${itemTitle}"]`,
+			);
+			await expect(source).toBeVisible({timeout: 15_000});
+			await dragMenuItemToAssignedRoot(page, modal, source);
+
+			// The move is state-only until saved; the item must now sit in
+			// the assigned panel at ROOT level (direct child of the panel
+			// content — a nested placement would render it inside another
+			// item's CSS-hidden front-end dropdown) and be gone from
+			// unassigned.
+			const assignedCopy = modal.locator(
+				`[data-cy="panel-content-assigned"] > [data-cy^="menu-item-"] > [data-menu-item-title="${itemTitle}"]`,
+			);
+			await expect(assignedCopy).toBeVisible({timeout: 10_000});
+			await expect(source).toHaveCount(0);
+
+			// Save → PUT /api/v1/navigationMenus/{menuId} (tunneled as
+			// POST + X-Http-Method-Override by useFetch).
+			const saved = page.waitForResponse(
+				(res) =>
+					/\/api\/v1\/navigationMenus\/\d+/.test(res.url()) &&
+					res.ok() &&
+					['POST', 'PUT'].includes(res.request().method()),
+				{timeout: 15_000},
+			);
+			await modal.getByRole('button', {name: 'Save'}).click();
+			await saved;
+			await expect(modal).toHaveCount(0, {timeout: 15_000});
+
+			// --- 3. Anonymous front end renders the new entry ---
+			const anon = await browser.newContext({
+				baseURL,
+				storageState: {cookies: [], origins: []},
+			});
+			try {
+				const reader = await anon.newPage();
+				const resp = await reader.goto(`/index.php/${context.path}/`);
+				expect(resp?.status()).toBe(200);
+
+				const nav = reader.locator('#navigationPrimary');
+				await expect(nav).toBeVisible();
+				const link = nav.getByRole('link', {name: itemTitle, exact: true});
+				await expect(link).toBeVisible();
+
+				// Clicking opens the custom content page
+				// (NavigationMenuItemHandler::view →
+				// navigationMenuItemViewContent.tpl).
+				await link.click();
+				await reader.waitForURL(new RegExp(itemPath), {
+					waitUntil: 'commit',
+				});
+				await expect(reader.locator('h1.page_title')).toHaveText(
+					itemTitle,
+				);
+				await expect(reader.locator('.page')).toContainText(contentMarker);
+			} finally {
+				await anon.close();
+			}
+		},
+	);
+
+	test(
+		'default user-menu items display conditionally by auth state',
+		{tag: '@regression'},
+		async ({pkpApi, browser, baseURL}) => {
+			// Plan row 4. New contexts install the default User Navigation
+			// Menu (registry/navigationMenus.xml, `user` area): Register +
+			// Login for anonymous visitors; a username dropdown (with
+			// Logout) once authenticated — PKPNavigationMenuService::
+			// getDisplayStatus flips the two sets server-side. A throwaway
+			// user (created via the scenario's users[] password branch)
+			// logs in through the real front-end login form so the seeded
+			// baseline users' cached auth states stay untouched.
+			const tag = uniqueTag();
+			const username = `navu${tag.replace(/[^a-z0-9]/g, '')}`;
+			const password = 'navUserPass1';
+			const {context} = await pkpApi.createJournal({
+				tag,
+				name: {en: `Nav User Scratch ${tag}`},
+				users: [{username, password, roles: ['reader']}],
+			});
+
+			const anon = await browser.newContext({
+				baseURL,
+				storageState: {cookies: [], origins: []},
+			});
+			try {
+				const reader = await anon.newPage();
+				const resp = await reader.goto(`/index.php/${context.path}/`);
+				expect(resp?.status()).toBe(200);
+
+				// --- Anonymous: Register + Login show, no user dropdown ---
+				const userNav = reader.locator('#navigationUserWrapper');
+				await expect(userNav).toBeVisible();
+				const registerLink = userNav.getByRole('link', {
+					name: 'Register',
+					exact: true,
+				});
+				const loginLink = userNav.getByRole('link', {
+					name: 'Login',
+					exact: true,
+				});
+				await expect(registerLink).toBeVisible();
+				await expect(loginLink).toBeVisible();
+				expect(await registerLink.getAttribute('href')).toContain(
+					'/user/register',
+				);
+				expect(await loginLink.getAttribute('href')).toContain('/login');
+				await expect(
+					userNav.locator('a[href*="/login/signOut"]'),
+				).toHaveCount(0);
+
+				// --- Log in through the front-end form (same selectors as
+				// LoginPage: stable ids on userLogin.tpl) ---
+				await loginLink.click();
+				await reader.waitForURL(/\/login/, {waitUntil: 'commit'});
+				await reader.locator('input#username').fill(username);
+				await reader.locator('input#password').fill(password);
+				await reader.locator('form#login button').click();
+				await reader.waitForURL(
+					(url) => !url.pathname.includes('/login'),
+					{timeout: 15_000, waitUntil: 'commit'},
+				);
+
+				// --- Authenticated: username dropdown with Logout; the
+				// Login/Register items are filtered out server-side ---
+				await reader.goto(`/index.php/${context.path}/`);
+				const userNavIn = reader.locator('#navigationUserWrapper');
+				await expect(userNavIn).toBeVisible();
+				// The dropdown parent renders {$loggedInUsername}.
+				await expect(userNavIn.getByText(username).first()).toBeVisible();
+				// The Logout child sits in the CSS-hidden dropdown submenu —
+				// invisible to the accessibility tree until hover, so assert
+				// presence via a CSS href locator (same pattern as the About
+				// submenu in journal-homepage.spec.js).
+				await expect(
+					userNavIn.locator('a[href*="/login/signOut"]'),
+				).toHaveCount(1);
+				await expect(
+					userNavIn.getByRole('link', {name: 'Register', exact: true}),
+				).toHaveCount(0);
+				await expect(
+					userNavIn.getByRole('link', {name: 'Login', exact: true}),
+				).toHaveCount(0);
+			} finally {
+				await anon.close();
+			}
 		},
 	);
 });

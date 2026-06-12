@@ -535,4 +535,289 @@ test.describe('Categories — wizard field rendering', () => {
 			}
 		},
 	);
+
+	test(
+		// Row 4 of docs/e2e/plans/categories.md: edit + cascade-delete on
+		// a tree seeded through the journal scenario's `categories` array
+		// (CategoryProcessor), so the UI only drives the edit and delete
+		// surfaces under test.
+		//
+		// Delete flow (categoryManagerStore.categoryDelete):
+		//   1. confirm dialog titled 'Are you absolutely sure you want to
+		//      delete "{title}" category?' whose body reports the
+		//      recursive sub-category count and requires TYPING the
+		//      category title to enable the destructive button
+		//      (CategoryDeleteDialogBody.vue);
+		//   2. a follow-up "Category Deleted" dialog repeats the count
+		//      ('"{title}" and its {n} sub-categories have been
+		//      successfully deleted');
+		//   3. the DELETE /api/v1/categories/{id} cascades server-side
+		//      (Repo::category()->delete() recursively deletes
+		//      subcategories), so the parent AND all descendants leave
+		//      the tree — and the wizard picker.
+		'manager edits a category and deleting a parent cascades to its descendants',
+		{tag: '@regression'},
+		async ({pkpApi, browser, baseURL}) => {
+			const tag = uniqueTag();
+			const pathSuffix = tag.slice(-8).toLowerCase();
+			// Titles deliberately avoid substring overlaps — Playwright's
+			// `hasText` string matching is case-insensitive substring, so
+			// e.g. "Grandchild X" would also match hasText "child X".
+			const parent = `Trunk ${tag}`;
+			const child = `Branch ${tag}`;
+			const grandchild = `Leaf ${tag}`;
+			const secondChild = `Twig ${tag}`;
+			const keeper = `Keeper ${tag}`;
+			const keeperRenamed = `Sequoia ${tag}`;
+			const keeperNewPath = `sequoia-${pathSuffix}`;
+
+			const {context} = await pkpApi.createJournal({
+				tag,
+				users: [{username: 'dbarnes', roles: ['manager']}],
+				submitWithCategories: true,
+				categories: [
+					{
+						path: `parent-${pathSuffix}`,
+						title: {en: parent},
+						children: [
+							{
+								path: `child-${pathSuffix}`,
+								title: {en: child},
+								children: [
+									{
+										path: `grandchild-${pathSuffix}`,
+										title: {en: grandchild},
+									},
+								],
+							},
+							{
+								path: `second-child-${pathSuffix}`,
+								title: {en: secondChild},
+							},
+						],
+					},
+					{path: `keeper-${pathSuffix}`, title: {en: keeper}},
+				],
+			});
+
+			const ctx = await browser.newContext({baseURL});
+			try {
+				const page = await ctx.newPage();
+				await loginDbarnes(page, context.path);
+				await gotoCategoriesAdmin(page, context.path);
+
+				// Seeded top-level rows render; children stay hidden
+				// until their parent's tree-expand toggle is clicked
+				// (TableCellTreeExpand — _expandedIds starts empty).
+				await expect(
+					page.locator('tr', {hasText: parent}).first(),
+				).toBeVisible({timeout: 15_000});
+				await expect(
+					page.locator('tr', {hasText: keeper}).first(),
+				).toBeVisible();
+				await page
+					.locator('tr', {hasText: parent})
+					.first()
+					.locator(
+						'button[data-cy="category-manager-toggle-sub-categories"]',
+					)
+					.click();
+				await expect(
+					page.locator('tr', {hasText: child}).first(),
+				).toBeVisible();
+				await expect(
+					page.locator('tr', {hasText: secondChild}).first(),
+				).toBeVisible();
+				// Expand the child too, proving the full seeded depth
+				// (grandchild) arrived through the scenario.
+				await page
+					.locator('tr', {hasText: child})
+					.first()
+					.locator(
+						'button[data-cy="category-manager-toggle-sub-categories"]',
+					)
+					.click();
+				await expect(
+					page.locator('tr', {hasText: grandchild}).first(),
+				).toBeVisible();
+
+				// --- Edit: rename Keeper + change its path. The Edit
+				// entry lives in the row's More Actions menu; the form is
+				// the same categoryForm used by Add.
+				await page
+					.locator('tr', {hasText: keeper})
+					.first()
+					.getByRole('button', {name: 'More Actions'})
+					.click();
+				await page
+					.getByRole('menuitem', {name: 'Edit', exact: true})
+					.first()
+					.click();
+				const form = page.locator('form.categories__categoryForm');
+				await expect(form).toBeVisible({timeout: 15_000});
+				await form
+					.locator('input[name^="title-en"]')
+					.first()
+					.fill(keeperRenamed);
+				await form
+					.locator('input[name^="path"]')
+					.first()
+					.fill(keeperNewPath);
+				await form.getByRole('button', {name: 'Save'}).click();
+				await expect(
+					page.locator('tr', {hasText: keeperRenamed}).first(),
+				).toBeVisible({timeout: 15_000});
+				await expect(page.locator('tr', {hasText: keeper})).toHaveCount(
+					0,
+				);
+
+				// Path change persisted server-side: the categories API
+				// returns the renamed top-level row with the new path.
+				const afterEdit = await ctx.request.get(
+					`/index.php/${context.path}/api/v1/categories`,
+				);
+				expect(afterEdit.ok(), 'list categories').toBe(true);
+				const afterEditBody = await afterEdit.json();
+				const renamedItem = (afterEditBody || []).find(
+					(c) => (c.title?.en || '') === keeperRenamed,
+				);
+				expect(
+					renamedItem,
+					'renamed category in API listing',
+				).toBeTruthy();
+				expect(renamedItem.path).toBe(keeperNewPath);
+
+				// --- Cascade delete: the parent owns 3 descendants
+				// (child + grandchild + second child).
+				await page
+					.locator('tr', {hasText: parent})
+					.first()
+					.getByRole('button', {name: 'More Actions'})
+					.click();
+				await page
+					.getByRole('menuitem', {
+						name: 'Delete Category',
+						exact: true,
+					})
+					.first()
+					.click();
+
+				const confirmDialog = page
+					.locator('[data-cy="dialog"]')
+					.filter({hasText: 'Are you absolutely sure'})
+					.first();
+				await expect(confirmDialog).toBeVisible({timeout: 15_000});
+				await expect(confirmDialog).toContainText(parent);
+				// The body reports the recursive sub-category count.
+				await expect(confirmDialog).toContainText(
+					'will remove all 3 sub-categories',
+				);
+				// Type-to-confirm gate: the destructive button stays
+				// disabled until the input matches the title exactly.
+				const confirmButton = confirmDialog.getByRole('button', {
+					name: 'I understand the consequences, delete this category',
+				});
+				await expect(confirmButton).toBeDisabled();
+				await confirmDialog.locator('input').first().fill(parent);
+				await expect(confirmButton).toBeEnabled();
+				await Promise.all([
+					page.waitForResponse(
+						(res) =>
+							/\/api\/v1\/categories\/\d+/.test(res.url()) &&
+							res.ok(),
+						{timeout: 15_000},
+					),
+					confirmButton.click(),
+				]);
+
+				// Success dialog repeats the cascade count; dismiss it.
+				const deletedDialog = page
+					.locator('[data-cy="dialog"]')
+					.filter({hasText: 'Category Deleted'})
+					.first();
+				await expect(deletedDialog).toBeVisible({timeout: 15_000});
+				await expect(deletedDialog).toContainText(
+					'3 sub-categories have been successfully deleted',
+				);
+				await deletedDialog
+					.getByRole('button', {name: 'Back to Categories'})
+					.click();
+				await expect(deletedDialog).toBeHidden({timeout: 10_000});
+
+				// Parent and ALL descendants are gone; the renamed
+				// sibling survives.
+				for (const title of [
+					parent,
+					child,
+					grandchild,
+					secondChild,
+				]) {
+					await expect(
+						page.locator('tr', {hasText: title}),
+					).toHaveCount(0, {timeout: 15_000});
+				}
+				await expect(
+					page.locator('tr', {hasText: keeperRenamed}).first(),
+				).toBeVisible();
+
+				// API agrees: a single top-level row remains and it has
+				// no descendants.
+				const afterDelete = await ctx.request.get(
+					`/index.php/${context.path}/api/v1/categories`,
+				);
+				expect(afterDelete.ok()).toBe(true);
+				const remaining = await afterDelete.json();
+				expect(remaining).toHaveLength(1);
+				expect(remaining[0].title?.en).toBe(keeperRenamed);
+
+				// --- The wizard picker no longer offers any deleted
+				// category. submitWithCategories is on and one category
+				// remains, so the field renders — with exactly the
+				// renamed survivor.
+				const wizard = new SubmissionWizardPage(page, context.path);
+				await wizard.goto();
+				await wizard.start({title: `Cascade-cats ${tag}`});
+				await wizard.continueStep();
+				await wizard.continueStep();
+				await wizard.continueStep();
+				await wizard.expectStep('For the Editors');
+
+				const selectBtn = page.getByRole('button', {
+					name: 'Select Categories',
+				});
+				await expect(selectBtn).toBeVisible({timeout: 15_000});
+				await selectBtn.click();
+
+				const selectModal = page
+					.locator('[data-cy="active-modal"]')
+					.filter({
+						has: page.getByRole('heading', {
+							name: 'Select Categories',
+						}),
+					});
+				await expect(
+					selectModal.getByRole('heading', {
+						name: 'Select Categories',
+					}),
+				).toBeVisible({timeout: 15_000});
+				await expect(
+					selectModal
+						.locator('label', {hasText: keeperRenamed})
+						.first(),
+				).toBeVisible();
+				for (const title of [
+					parent,
+					child,
+					grandchild,
+					secondChild,
+				]) {
+					await expect(
+						selectModal.locator('label', {hasText: title}),
+					).toHaveCount(0);
+				}
+			} finally {
+				await ctx.close();
+			}
+		},
+	);
 });

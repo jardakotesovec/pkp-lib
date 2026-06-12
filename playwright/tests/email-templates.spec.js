@@ -1,10 +1,13 @@
 // @ts-check
 const {test, expect} = require('../support/base-test.js');
-const {setTinyMceContent} = require('../support/tinymce.js');
+const {setTinyMceContent, getTinyMceContent} = require('../support/tinymce.js');
+const {EditorialWorkflowPage} = require('../../../../playwright/pages/EditorialWorkflowPage.js');
+const submissionInReview = require('../../../../playwright/fixtures/scenarios/submission-in-review.js');
 /**
- * Email templates — row #4 in docs/e2e-playwright-migration.md.
+ * Email templates management — docs/e2e/plans/email-templates-management.md
+ * (6 rows; this spec backs all of them).
  *
- * Ports lib/pkp/cypress/tests/integration/emailTemplates/EmailTemplates.cy.js
+ * Rows 1–4 port lib/pkp/cypress/tests/integration/emailTemplates/EmailTemplates.cy.js
  * (9 tests) into 4 focused tests:
  *
  *   1. edit-default: toggle an existing mailable's default template
@@ -25,6 +28,20 @@ const {setTinyMceContent} = require('../support/tinymce.js');
  *      with zero user groups assigned and confirm the form accepts the
  *      zero-UG state. Cypress test 7 — the "is the validator OK with no
  *      UGs?" surface, distinct from tests 5/6's "save with checks".
+ *
+ * Rows 5–6 cover the lifecycle around the editor:
+ *
+ *   5. edited-default-in-sent-mail: the customized
+ *      DecisionAcceptNotifyAuthor (EDITOR_DECISION_ACCEPT) body is what
+ *      an Accept decision recorded through the UI actually sends — the
+ *      Mailpit message to the author carries the unique marker with all
+ *      {$...} variables rendered. (Drives the OJS EditorialWorkflowPage
+ *      POM, same cross-import precedent as review-decisions.spec.js —
+ *      the decision flow ships from pkp-lib but the workflow-page POM
+ *      is app-specific.)
+ *   6. reset-and-remove: the per-template Reset row action restores a
+ *      customized default to stock subject/body; Remove deletes a
+ *      custom template and it stays gone after a reload.
  *
  * Each test seeds its own E0 scratch journal so the bootstrapped
  * publicknowledge journal's email templates stay untouched.
@@ -393,6 +410,215 @@ test.describe('Email templates', () => {
 					templateModal.locator('input[name="assignedUserGroupIds"]').nth(i),
 				).not.toBeChecked();
 			}
+		},
+	);
+
+	test(
+		'edited default template text is used in the accept decision email',
+		{tag: ['@regression', '@slow']},
+		async ({pkpApi, asUser, pkpMail}) => {
+			// Plan row 5. Template edit + decision wizard + Mailpit poll.
+			test.slow();
+			const tag = uniqueTag();
+			// Whitespace-free marker distinct from the title tag, so the
+			// Mailpit match proves the EDITED template body was sent (the
+			// stock body also interpolates the tagged {$submissionTitle}).
+			const marker = `AcceptTplMarker-${tag}`;
+			const {context} = await pkpApi.createJournal({
+				tag,
+				users: [
+					{username: 'dbarnes', roles: ['manager', 'editor']},
+					{username: 'rvaca', roles: ['author']},
+				],
+			});
+			// Empty reviewer list — Accept is offered without completed
+			// reviews and the wizard then has exactly the notifyAuthors +
+			// promote-files steps (review-decisions.spec.js row 1).
+			const {submission} = await pkpApi.createSubmission(
+				submissionInReview({tag, journal: context.path, reviewers: []}),
+			);
+
+			const ctx = await asUser('dbarnes');
+			const page = await ctx.newPage();
+			await openManageEmails(page, context.path);
+
+			// Edit the DecisionAcceptNotifyAuthor default template
+			// (EDITOR_DECISION_ACCEPT — mailable name "Submission
+			// Accepted"). Keep the stock body's variables so the
+			// delivered mail proves they render.
+			const mailable = 'Submission Accepted';
+			await openEmailTemplate(page, mailable, mailable);
+			await setTinyMceContent(
+				page,
+				'editEmailTemplate-body-control-en',
+				`<p>Dear {$recipientName},</p>` +
+					`<p>${marker} — we are pleased to accept {$submissionTitle} ` +
+					`for publication in {$contextName}.</p>`,
+			);
+			await saveTemplateModal(page);
+
+			// Record an Accept decision through the UI. The decision
+			// wizard's notifyAuthors composer auto-loads the mailable's
+			// default template — which is now the customized row
+			// (Repo::emailTemplate()->getByKey returns the override).
+			const workflow = new EditorialWorkflowPage(page);
+			await workflow.goto(submission.id, {journalPath: context.path});
+			await workflow.clickDecision('Accept Submission');
+			await workflow.clickContinue();
+			await workflow.recordDecision(
+				'has been accepted for publication and sent to the copyediting stage',
+			);
+
+			// The author's mail carries the marker (edited body used) with
+			// every template variable rendered: the {$submissionTitle}
+			// substitution surfaces the tagged title, and no raw {$...}
+			// token survives anywhere in subject or body.
+			const [message] = await pkpMail.find({
+				to: 'rvaca@mailinator.com',
+				contains: marker,
+				timeoutMs: 20_000,
+			});
+			const full = await pkpMail.fullMessage(message.ID);
+			const content = `${full.HTML ?? ''}${full.Text ?? ''}`;
+			expect(content).toContain(marker);
+			expect(content).toContain(tag);
+			expect(content).not.toMatch(/\{\$\w+\}/);
+			expect(message.Subject).not.toMatch(/\{\$\w+\}/);
+		},
+	);
+
+	test(
+		'reset restores a default template and remove deletes a custom one',
+		{tag: '@regression'},
+		async ({pkpApi, asUser}) => {
+			// Plan row 6.
+			const tag = uniqueTag();
+			const {context} = await pkpApi.createJournal({
+				tag,
+				users: [{username: 'dbarnes', roles: ['manager']}],
+			});
+			const ctx = await asUser('dbarnes');
+			const page = await ctx.newPage();
+			await openManageEmails(page, context.path);
+
+			const mailable = 'Discussion (Production)';
+
+			// --- Reset half -------------------------------------------
+			// Capture the stock subject/body before any edit; the Reset
+			// assertion compares against these instead of hard-coding
+			// locale strings.
+			let templateModal = await openEmailTemplate(page, mailable, mailable);
+			const subjectInput = () =>
+				templateModalLocator(page).locator(
+					'input[id^="editEmailTemplate-subject-control-en"]',
+				);
+			const stockSubject = await subjectInput().inputValue();
+			const stockBody = await getTinyMceContent(
+				page,
+				'editEmailTemplate-body-control-en',
+			);
+
+			// Edit subject + body and save. A pristine default has no DB
+			// row (EditMailableModal only offers Reset when item.id is
+			// set), so Reset appearing after the save doubles as the
+			// customized-row persistence check.
+			const mailableModal = mailableModalLocator(page);
+			const defaultRow = mailableModal
+				.locator('li.listPanel__item', {hasText: mailable})
+				.first();
+			await expect(
+				defaultRow.getByRole('button', {name: 'Reset', exact: true}),
+			).toHaveCount(0);
+			await subjectInput().fill(`Edited subject ${tag}`);
+			await setTinyMceContent(
+				page,
+				'editEmailTemplate-body-control-en',
+				`<p>Edited body ${tag}</p>`,
+			);
+			await saveTemplateModal(page);
+			await expect(
+				defaultRow.getByRole('button', {name: 'Reset', exact: true}),
+			).toBeVisible({timeout: 15_000});
+
+			// Reset → confirm dialog → the row swaps back to the pristine
+			// default (Reset button unmounts again).
+			await defaultRow
+				.getByRole('button', {name: 'Reset', exact: true})
+				.click();
+			const resetDialog = page
+				.locator('[data-cy="dialog"]')
+				.filter({hasText: 'Reset Template'});
+			await expect(resetDialog).toBeVisible({timeout: 10_000});
+			await resetDialog
+				.getByRole('button', {name: 'Reset Template', exact: true})
+				.click();
+			await expect(
+				defaultRow.getByRole('button', {name: 'Reset', exact: true}),
+			).toHaveCount(0, {timeout: 15_000});
+
+			// Reopening shows the stock subject/body again.
+			await defaultRow
+				.getByRole('button', {name: 'Edit', exact: true})
+				.click();
+			templateModal = templateModalLocator(page);
+			await expect(templateModal).toHaveCount(1);
+			await expect(subjectInput()).toHaveValue(stockSubject);
+			expect(
+				await getTinyMceContent(page, 'editEmailTemplate-body-control-en'),
+			).toBe(stockBody);
+			// Close the template modal (no save) before the Remove half.
+			await templateModal
+				.getByRole('button', {name: 'Close', exact: true})
+				.click({force: true});
+			await expect(templateModalLocator(page)).toHaveCount(0, {
+				timeout: 10_000,
+			});
+
+			// --- Remove half ------------------------------------------
+			const templateName = `Custom removable ${tag}`;
+			await mailableModal.getByRole('button', {name: 'Add Template'}).click();
+			templateModal = templateModalLocator(page);
+			await expect(templateModal).toHaveCount(1);
+			await templateModal
+				.locator('input[id^="editEmailTemplate-name-control-en"]')
+				.fill(templateName);
+			await subjectInput().fill(`Removable subject ${tag}`);
+			await setTinyMceContent(
+				page,
+				'editEmailTemplate-body-control-en',
+				`<p>Removable body ${tag}</p>`,
+			);
+			await saveTemplateModal(page);
+
+			const customRow = mailableModal
+				.locator('li.listPanel__item', {hasText: templateName})
+				.first();
+			await expect(customRow).toBeVisible({timeout: 15_000});
+			await customRow
+				.getByRole('button', {name: 'Remove', exact: true})
+				.click();
+			const removeDialog = page
+				.locator('[data-cy="dialog"]')
+				.filter({hasText: 'Remove Template'});
+			await expect(removeDialog).toBeVisible({timeout: 10_000});
+			await removeDialog
+				.getByRole('button', {name: 'Remove Template', exact: true})
+				.click();
+			await expect(
+				mailableModal.locator('li.listPanel__item', {hasText: templateName}),
+			).toHaveCount(0, {timeout: 15_000});
+
+			// ... and it stays gone after a full reload.
+			await page.reload();
+			await expect(page.locator('li.listPanel__item').first()).toBeVisible();
+			await clickEditOnMailable(page, mailable);
+			const reloadedMailableModal = mailableModalLocator(page);
+			await expect(reloadedMailableModal).toHaveCount(1);
+			await expect(
+				reloadedMailableModal.locator('li.listPanel__item', {
+					hasText: templateName,
+				}),
+			).toHaveCount(0);
 		},
 	);
 });
