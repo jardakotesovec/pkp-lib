@@ -1,6 +1,7 @@
 // @ts-check
 const {test, expect} = require('../support/base-test.js');
 const {getPassword} = require('../data/users.js');
+const {LoginPage} = require('../pages/LoginPage.js');
 
 /**
  * Public user registration — row #58 in docs/e2e-playwright-migration.md.
@@ -127,6 +128,203 @@ test.describe('Public user registration', () => {
 			} finally {
 				await ctx.close();
 			}
+		},
+	);
+
+	test(
+		'registration with reviewer opt-in records the reviewer role and interests',
+		{tag: '@regression'},
+		async ({page}) => {
+			// Row 2 — docs/e2e/plans/registration-login.md. The default
+			// Reviewer group ships permitSelfRegistration="true"
+			// (registry/userGroups.xml), so the publicknowledge register
+			// form renders the opt-in checkbox + interests field
+			// (templates/frontend/pages/userRegister.tpl, #reviewerOptinGroup).
+			// No test.use({user}) in this file → `page` is anonymous.
+			const suffix = Math.random().toString(36).slice(2, 8);
+			const username = `reg2-w${test.info().parallelIndex}-${suffix}`;
+			const password = getPassword(username);
+			// Interests land in a SITE-level controlled vocab shared by
+			// every worker — unique, whitespace-free values keep this
+			// INSERT-only and collision-free. Comma is the separator
+			// Repo::userInterest()->setInterestsForUser explodes on.
+			const interests = [`Iva${suffix}`, `Ivb${suffix}`];
+
+			await page.goto('/index.php/publicknowledge/user/register');
+			await expect(
+				page.getByRole('heading', {name: 'Register'}),
+			).toBeVisible();
+
+			await page.locator('input[name="givenName"]').fill('Reg');
+			await page.locator('input[name="familyName"]').fill('Reviewer');
+			await page
+				.locator('input[name="affiliation"]')
+				.fill('Public Knowledge Project');
+			await page.locator('select[name="country"]').selectOption('CA');
+			await page
+				.locator('input[name="email"]')
+				.fill(`${username}@mailinator.com`);
+			await page.locator('input[name="username"]').fill(username);
+			await page.locator('input[name="password"]').fill(password);
+			await page.locator('input[name="password2"]').fill(password);
+
+			// Reviewer opt-in: publicknowledge has exactly one
+			// self-registerable reviewer group, so the single-group locale
+			// key renders ("Yes, I would like to be contacted with
+			// requests to review submissions to this journal.").
+			const optIn = page.locator(
+				'#reviewerOptinGroup input[type="checkbox"]',
+			);
+			await optIn.check();
+			await page
+				.locator('input[name="interests"]')
+				.fill(interests.join(','));
+
+			await page.locator('input[name="privacyConsent"]').check();
+
+			await Promise.all([
+				page.waitForURL(/\/user\/register(\/|\?|$)/),
+				page.locator('form#register button[type="submit"]').click(),
+			]);
+			await expect(
+				page.getByRole('heading', {name: 'Registration complete'}),
+			).toBeVisible();
+
+			// The profile's Roles tab is the canonical readback surface:
+			// it re-renders the self-registration groups with the user's
+			// memberships checked, plus the interests vocabulary. Legacy
+			// jQuery tabs (templates/user/profile.tpl #profileTabs) load
+			// the panel via AJAX on click.
+			await page.goto('/index.php/publicknowledge/user/profile');
+			await page.locator('#profileTabs a[name="roles"]').click();
+
+			const rolesForm = page.locator('#rolesForm');
+			// Scope to the CURRENT journal's self-registration section.
+			// On a long-lived test DB the Roles tab also lists every
+			// scratch journal under "Register with other journals"
+			// (#userGroupExtraFormFields), each with its own "Reviewer"
+			// checkbox — an unscoped lookup is a strict-mode violation.
+			// userGroups.tpl renders the current-context section as the
+			// FIRST .section inside the #userGroups form area; there is no
+			// text label to anchor on (formSection.tpl's translate=false
+			// branch reads the misspelled $FBV_Label and renders nothing).
+			const selfRegSection = rolesForm
+				.locator('#userGroups > .section')
+				.first();
+			await expect(
+				selfRegSection.getByRole('checkbox', {
+					name: 'Reviewer',
+					exact: true,
+				}),
+			).toBeChecked();
+			// Interests render as a tag-it list (form/interestsInput.tpl).
+			// Assert on text content — robust both before and after the
+			// tagit JS transforms the seeded <li> items into pills.
+			const interestsList = rolesForm.locator('ul.interests');
+			for (const interest of interests) {
+				await expect(interestsList).toContainText(interest);
+			}
+		},
+	);
+
+	test(
+		'registration validation rejects duplicates and incomplete input',
+		{tag: '@regression'},
+		async ({page}) => {
+			// Row 3 — docs/e2e/plans/registration-login.md. Duplicate
+			// checks are READ-ONLY against the seeded baseline user
+			// `atester` (username + email), so this never mutates shared
+			// state. RegistrationForm wires the failures asserted here:
+			//   username  → user.register.form.usernameExists
+			//   email     → user.register.form.emailExists
+			//   password  → user.register.form.passwordsDoNotMatch
+			//   consent   → user.profile.form.privacyConsentRequired
+			const suffix = Math.random().toString(36).slice(2, 8);
+			const unique = `reg3-w${test.info().parallelIndex}-${suffix}`;
+			const goodPassword = `pw-${suffix}-ok`;
+
+			await page.goto('/index.php/publicknowledge/user/register');
+			await expect(
+				page.getByRole('heading', {name: 'Register'}),
+			).toBeVisible();
+
+			// 1) Missing required fields: the form's native `required`
+			// attributes block the submit client-side — no POST happens,
+			// no server-rendered errors, the page stays put.
+			await page.locator('form#register button[type="submit"]').click();
+			await expect(page).toHaveURL(/\/user\/register/);
+			await expect(page.locator('input#givenName')).toHaveJSProperty(
+				'validity.valueMissing',
+				true,
+			);
+			await expect(page.locator('input#username')).toHaveJSProperty(
+				'validity.valueMissing',
+				true,
+			);
+			await expect(page.locator('#formErrors')).toHaveCount(0);
+
+			// 2) Duplicate username + duplicate email + password mismatch
+			// + missing privacy consent — all pass native validation, all
+			// fail server-side in one POST. The re-rendered form lists
+			// each field error and retains the entered values.
+			await page.locator('input[name="givenName"]').fill('Dup');
+			await page.locator('input[name="familyName"]').fill('Tester');
+			await page.locator('input[name="affiliation"]').fill('PKP');
+			await page.locator('select[name="country"]').selectOption('CA');
+			await page
+				.locator('input[name="email"]')
+				.fill('atester@mailinator.com');
+			await page.locator('input[name="username"]').fill('atester');
+			await page.locator('input[name="password"]').fill(`${goodPassword}a`);
+			await page.locator('input[name="password2"]').fill(`${goodPassword}b`);
+			// privacyConsent deliberately left unchecked.
+			await page.locator('form#register button[type="submit"]').click();
+
+			const formErrors = page.locator('#formErrors');
+			await expect(formErrors).toBeVisible();
+			await expect(formErrors).toContainText(
+				'The selected username is already in use by another user.',
+			);
+			await expect(formErrors).toContainText(
+				'The selected email address is already in use by another user.',
+			);
+			await expect(formErrors).toContainText('The passwords do not match.');
+			await expect(formErrors).toContainText(
+				'You must agree to the terms of the privacy statement.',
+			);
+			// Entered values are retained (passwords are not — the
+			// template never echoes them back).
+			await expect(page.locator('input#username')).toHaveValue('atester');
+			await expect(page.locator('input#email')).toHaveValue(
+				'atester@mailinator.com',
+			);
+			await expect(page.locator('input#givenName')).toHaveValue('Dup');
+			await expect(page.locator('select#country')).toHaveValue('CA');
+
+			// 3) Fix everything EXCEPT consent: unique credentials,
+			// matching passwords. The only remaining error is the privacy
+			// consent — and the account must still not be created.
+			await page.locator('input[name="username"]').fill(unique);
+			await page
+				.locator('input[name="email"]')
+				.fill(`${unique}@mailinator.com`);
+			await page.locator('input[name="password"]').fill(goodPassword);
+			await page.locator('input[name="password2"]').fill(goodPassword);
+			await page.locator('form#register button[type="submit"]').click();
+
+			await expect(formErrors).toBeVisible();
+			await expect(formErrors.locator('li')).toHaveCount(1);
+			await expect(formErrors).toContainText(
+				'You must agree to the terms of the privacy statement.',
+			);
+
+			// 4) Black-box proof no account was created: the rejected
+			// credentials cannot log in.
+			const login = new LoginPage(page);
+			await login.login(unique, goodPassword, 'publicknowledge');
+			await expect(login.error).toContainText(
+				'Invalid username/email or password',
+			);
 		},
 	);
 });

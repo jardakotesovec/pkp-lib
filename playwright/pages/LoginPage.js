@@ -16,6 +16,15 @@ exports.LoginPage = class LoginPage extends BasePage {
 		this.username = page.locator('input#username');
 		this.password = page.locator('input#password');
 		this.signIn = page.locator('form#login button');
+		// Server-rendered failure message (LoginHandler::signIn re-renders
+		// frontend/pages/userLogin.tpl with `error` set; en string:
+		// "Invalid username/email or password. Please try again.").
+		this.error = page.locator('form#login .pkp_form_error');
+		// Hidden round-trip field. Validation::redirectLogin() appends the
+		// originally-requested REQUEST_URI as ?source=...; the login form
+		// carries it through the POST so LoginHandler::signIn can
+		// redirectUrl() back to the protected page after authentication.
+		this.sourceField = page.locator('form#login input[name="source"]');
 	}
 
 	/**
@@ -38,6 +47,23 @@ exports.LoginPage = class LoginPage extends BasePage {
 	 */
 	async login(username, password, contextPath = 'index') {
 		await this.goto(contextPath);
+		await this.username.fill(username);
+		await this.password.fill(password);
+		await this.signIn.click();
+	}
+
+	/**
+	 * Fill and submit credentials on an ALREADY-RENDERED login form,
+	 * without navigating first. Use when the test arrived at /login via
+	 * an app redirect (e.g. an anonymous hit on a protected URL that
+	 * appended ?source=...) and the form's hidden state — most notably
+	 * the `source` round-trip field — must be preserved. `login()` would
+	 * re-goto() the bare login URL and drop it.
+	 *
+	 * @param {string} username
+	 * @param {string} password
+	 */
+	async submitCredentials(username, password) {
 		await this.username.fill(username);
 		await this.password.fill(password);
 		await this.signIn.click();

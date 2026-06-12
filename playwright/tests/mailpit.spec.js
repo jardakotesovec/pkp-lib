@@ -3,23 +3,34 @@ const {test, expect} = require('../support/base-test.js');
 const submissionInReview = require('../../../../playwright/fixtures/scenarios/submission-in-review.js');
 
 /**
- * Mailpit sanity — proves the round-trip the rest of the suite relies on:
+ * Mailpit harness sanity — proves the fixture plumbing the rest of the
+ * suite relies on:
  *
  *   1. clearAll() empties Mailpit's inbox.
- *   2. A real UI action (password-reset for dbarnes) produces SMTP traffic
- *      that flows through OJS's Symfony mailer (configured to talk to
- *      127.0.0.1:1025) into Mailpit, where the pkpMail fixture observes it.
- *   3. clearAll() called again drops the message.
- *
- * Plus the critical guarantee for scenario-driven tests:
- *
- *   4. createSubmission() with a multi-decision review fixture emits a lot
+ *   2. createSubmission() with a multi-decision review fixture emits a lot
  *      of internal mail during seeding — every Mail::send() inside the
  *      scenario controller is supposed to be intercepted by Mail::fake().
- *      Mailpit must stay empty after such a seed.
+ *      None of it may reach Mailpit.
  *
- * If (4) fails, the assumption that scenario seeds are mail-silent is wrong
+ * If (2) fails, the assumption that scenario seeds are mail-silent is wrong
  * and downstream tests asserting on test-action mail will see seeded noise.
+ *
+ * The "real UI action produces SMTP traffic observable via pkpMail" proof
+ * that used to live here (a password-reset request for dbarnes) was
+ * absorbed into password-flows.spec.js row 1 (the full lost-password
+ * round-trip on a throwaway user) — see docs/e2e/plans/password-flows.md.
+ * The remaining tests here belong to the test-infrastructure plan.
+ *
+ * (2) was originally asserted as `messageCount() === 0` after a
+ * clearAll(). That global count is only valid with zero parallel
+ * neighbors — this file sits in the parallel project (its serial mode
+ * below only orders its own tests), so any concurrent mail-sending test
+ * (e.g. password-flows) lands a message between the clear and the count
+ * and fails it. Reworked per principle 8: scope by the seed's unique tag
+ * (every seeding mailable interpolates the tag-marked submission title)
+ * across the fixture's full recipient cast, bounded by a positive
+ * control message. The global-count form can return if/when the
+ * test-infrastructure plan relocates this spec to tests/serial/.
  *
  * The spec runs serial because clearAll() is global — interleaving with
  * other mail-touching tests would race each other's inboxes.
@@ -40,69 +51,49 @@ test('clearAll empties Mailpit when there is nothing to clear', async ({pkpMail}
 	).rejects.toThrow(/No mail/);
 });
 
-test('password-reset request via the lost-password page lands in Mailpit', async ({
+test('scenario seeding stays mail-faked — no tag-marked seed mail reaches Mailpit', async ({
 	page,
-	pkpMail,
-}) => {
-	await pkpMail.clearAll();
-
-	// Drive the public lost-password form. The Smarty template uses {csrf},
-	// and the form action posts to /login/requestResetPassword. Filling
-	// the form via the rendered DOM means CSRF, altcha (off in test
-	// config), and rate-limiter (off by default) all get exercised the
-	// same way a real browser would do.
-	await page.goto('/index.php/index/login/lostPassword');
-	await page.locator('input[name="email"]').fill('dbarnes@mailinator.com');
-	await page.locator('button[type="submit"]').click();
-
-	// On success OJS renders a generic "instructions sent" page — wait for
-	// that nav so we know the POST committed before polling Mailpit.
-	await expect(page).toHaveURL(/requestResetPassword|message/);
-
-	const messages = await pkpMail.inboxFor('dbarnes@mailinator.com');
-	expect(messages.length).toBeGreaterThan(0);
-
-	// Mailpit fields are PascalCase — verified live (1.29.7).
-	const latest = messages[0];
-	expect(latest.To.some((addr) => addr.Address === 'dbarnes@mailinator.com')).toBe(true);
-	// The default PasswordResetRequested template subject is locale-dependent;
-	// just assert it's non-empty rather than pinning to specific copy.
-	expect(latest.Subject).toBeTruthy();
-
-	// Round-trip check — fullMessage should return the body, not just a summary.
-	const full = await pkpMail.fullMessage(latest.ID);
-	expect(full.HTML || full.Text).toBeTruthy();
-
-	// Cleanup so subsequent assertions can verify clearAll() works.
-	await pkpMail.clearAll();
-	await expect(
-		pkpMail.inboxFor('dbarnes@mailinator.com', {timeout: 500, poll: 100}),
-	).rejects.toThrow(/No mail/);
-});
-
-test('scenario seeding stays mail-faked — Mailpit empty after createSubmission', async ({
 	pkpApi,
 	pkpMail,
 }) => {
-	await pkpMail.clearAll();
-
 	// Worker-scoped tag keeps parallel runs isolated.
 	const tag = `mailfake-w${test.info().parallelIndex}-${Math.random()
 		.toString(36)
 		.slice(2, 8)}`;
 
+	// Throwaway control recipient on a scratch journal. Its password-reset
+	// mail — real SMTP traffic triggered AFTER the seed below — bounds the
+	// window in which any leaked seeding mail must already have arrived.
+	const controlUser = `ctl${tag.replace(/[^a-z0-9]/gi, '')}`;
+	const controlEmail = `${controlUser}@mailinator.com`;
+	const {context} = await pkpApi.createJournal({
+		tag,
+		users: [
+			{username: controlUser, password: `${controlUser}pw`, roles: ['author']},
+		],
+	});
+
 	// submissionInReview drives sendExternalReview + adds two reviewers.
 	// This path internally calls Mail::send() on multiple mailables
 	// (submission acknowledgement, editor assignment, reviewer
-	// invitations). All of them should be intercepted by Mail::fake() in
-	// PKPSubmissionScenarioController; Mailpit must observe nothing.
+	// invitations) — all addressed to the cast below, all interpolating
+	// the tag-marked submission title. Every one of them must be
+	// intercepted by Mail::fake() in PKPSubmissionScenarioController.
 	await pkpApi.createSubmission(submissionInReview({tag}));
 
-	// Allow a small grace window — if any seeding mail were going to leak
-	// it would be in-flight by now (the seed call has already returned).
-	await new Promise((r) => setTimeout(r, 1500));
+	// Positive control: a real UI action whose mail MUST reach Mailpit.
+	await page.goto(`/index.php/${context.path}/login/lostPassword`);
+	await page.locator('input[name="email"]').fill(controlEmail);
+	await page.locator('button[type="submit"]').click();
 
-	// Any message in Mailpit at all means a leak.
-	const count = await pkpMail.messageCount();
-	expect(count).toBe(0);
+	// No tag-marked mail to anyone the fixture's seeding mailables would
+	// address (submitter, editor, both reviewers).
+	for (const username of ['rvaca', 'dbarnes', 'phudson', 'jjanssen']) {
+		await pkpMail.expectNone({
+			to: `${username}@mailinator.com`,
+			contains: tag,
+			afterControl: {to: controlEmail, contains: controlUser},
+			timeoutMs: 20_000,
+		});
+	}
 });

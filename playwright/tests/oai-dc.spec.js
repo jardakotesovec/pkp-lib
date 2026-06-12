@@ -3,7 +3,11 @@ const {test, expect} = require('../support/base-test.js');
 const submissionPublished = require('../../../../playwright/fixtures/scenarios/submission-published.js');
 
 /**
- * OAI — Dublin Core endpoint — row #39 in docs/e2e-playwright-migration.md.
+ * OAI — Dublin Core endpoint — rows 1–3 of
+ * docs/e2e/plans/oai-sitemap-feeds.md (originally row #39 in
+ * docs/e2e-playwright-migration.md). The plan's OJS-specific rows 4–5
+ * (sitemap + web feeds) live in playwright/tests/sitemap-feeds.spec.js —
+ * the plan's Absorbs note records the split.
  *
  * Ports lib/pkp/cypress/tests/integration/oai/DC.cy.js. That Cypress test
  * runs late in the serial suite and relies on previously-seeded published
@@ -171,6 +175,72 @@ test.describe('OAI Dublin Core endpoint', () => {
 			// don't see one (GetRecord against a missing identifier would
 			// still return 200 but with an idDoesNotExist error body).
 			expect(getBody).not.toMatch(/<error[^>]*>/);
+		},
+	);
+
+	test(
+		'Identify, ListMetadataFormats and ListSets describe the repository',
+		async ({request}) => {
+			// Plan row 3 — no seed needed: all three verbs describe the
+			// bootstrap publicknowledge journal itself (read-only). The
+			// journal-scoped endpoint restricts every response to this
+			// journal (JournalOAI passes $this->journalId through to the
+			// DAO), so parallel workers' scratch journals can't leak in.
+
+			// --- Identify: repository name + admin email come from the
+			// journal's localized name and contactEmail
+			// (classes/oai/ojs/JournalOAI.php::repositoryInfo). Bootstrap
+			// seeds contact name/email in playwright/fixtures/bootstrap.js.
+			const identifyRes = await request.get(
+				'/index.php/publicknowledge/oai?verb=Identify',
+			);
+			expect(identifyRes.status()).toBe(200);
+			expect(identifyRes.headers()['content-type']).toContain('text/xml');
+			const identify = await identifyRes.text();
+			expect(identify).toContain('<Identify>');
+			expect(identify).not.toMatch(/<error[^>]*>/);
+			expect(identify).toContain(
+				'<repositoryName>Journal of Public Knowledge</repositoryName>',
+			);
+			expect(identify).toContain(
+				'<adminEmail>rvaca@mailinator.com</adminEmail>',
+			);
+
+			// --- ListMetadataFormats: oai_dc must be among the formats
+			// registered by the oaiMetadataFormats plugin category.
+			const formatsRes = await request.get(
+				'/index.php/publicknowledge/oai?verb=ListMetadataFormats',
+			);
+			expect(formatsRes.status()).toBe(200);
+			expect(formatsRes.headers()['content-type']).toContain('text/xml');
+			const formats = await formatsRes.text();
+			expect(formats).toContain('<ListMetadataFormats>');
+			expect(formats).not.toMatch(/<error[^>]*>/);
+			expect(formats).toContain('<metadataPrefix>oai_dc</metadataPrefix>');
+
+			// --- ListSets: the journal set (spec = urlPath, name =
+			// localized journal name) plus one set per section, specced
+			// `{journalPath}:{sectionAbbrev}` and named by section title
+			// (classes/oai/ojs/OAIDAO.php::getJournalSets / setSpec).
+			// Presence-scoped, not count-scoped: tombstone sets from other
+			// workers' unpublish flows may legitimately appear.
+			const setsRes = await request.get(
+				'/index.php/publicknowledge/oai?verb=ListSets',
+			);
+			expect(setsRes.status()).toBe(200);
+			expect(setsRes.headers()['content-type']).toContain('text/xml');
+			const sets = await setsRes.text();
+			expect(sets).toContain('<ListSets>');
+			expect(sets).not.toMatch(/<error[^>]*>/);
+			expect(sets).toMatch(
+				/<setSpec>publicknowledge<\/setSpec>\s*<setName>Journal of Public Knowledge<\/setName>/,
+			);
+			expect(sets).toMatch(
+				/<setSpec>publicknowledge:ART<\/setSpec>\s*<setName>Articles<\/setName>/,
+			);
+			expect(sets).toMatch(
+				/<setSpec>publicknowledge:REV<\/setSpec>\s*<setName>Reviews<\/setName>/,
+			);
 		},
 	);
 });
