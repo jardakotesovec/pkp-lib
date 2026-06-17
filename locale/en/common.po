@@ -46,7 +46,7 @@ msgid "about.contact.supportContact"
 msgstr "Support Contact"
 
 msgid "about.editorialMasthead.linkToEditorialHistory"
-msgstr "View <a href=\"{$url}\">Editorial History</a>"
+msgstr "View the full <a href=\"{$url}\">editorial history</a>."
 
 msgid "about.other"
 msgstr "Other"
