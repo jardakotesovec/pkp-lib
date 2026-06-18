@@ -2,6 +2,6 @@
     'slug' => 'default',
 ])
 
-<div {{ $attributes->merge(['class' => 'homepage-block homepage-block-' . $slug]) }}>
+<section {{ $attributes->merge(['class' => 'homepage-block homepage-block-' . $slug]) }}>
     {!! $slot !!}
-</div>
+</section>
