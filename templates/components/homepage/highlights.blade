@@ -3,7 +3,11 @@
         <h2 class="sr-only">
             {{ __('common.highlights') }}
         </h2>
-        <div class="swiper">
+        <div
+            class="swiper"
+            data-ally-prev="{{ __('common.slide.prev') }}"
+            data-ally-next="{{ __('common.slide.next') }}"
+        >
             <ol class="swiper-wrapper">
                 @foreach($highlights as $highlight)
                     <li class="swiper-slide @if($highlight->getImage())swiper-has-image @endif">

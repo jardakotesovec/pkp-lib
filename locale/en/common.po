@@ -949,6 +949,12 @@ msgstr "{$current}/{$total} steps"
 msgid "common.showingXofX"
 msgstr "Showing <strong>{$start} to {$finish}</strong> of {$total}"
 
+msgid "common.slide.next"
+msgstr "Next slide"
+
+msgid "common.slide.prev"
+msgstr "Previous slide"
+
 msgid "common.size"
 msgstr "Size"
 
