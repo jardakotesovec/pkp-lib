@@ -93,5 +93,11 @@ class HomepageBlocksRegistry extends BlocksRegistry
                 title: __('manager.announcements.latest'),
             )
         );
+        $this->register(
+            new HomepageBlock(
+                component: 'homepage.highlights',
+                title: __('common.highlights'),
+            )
+        );
     }
 }
