@@ -30,6 +30,7 @@ use APP\file\PublicFileManager;
 use APP\publication\Publication;
 use APP\submission\Submission;
 use APP\template\TemplateManager;
+use APP\view\HomepageBlocksRegistry;
 use APP\view\MetadataBlocksRegistry;
 use Exception;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -144,6 +145,9 @@ class PKPTemplateManager extends Smarty
     /** @var MetadataBlocksRegistry Register and load metadata blocks for the reader facing UI */
     public MetadataBlocksRegistry $metadataBlocks;
 
+    /** @var HomepageBlocksRegistry Register and load metadata blocks for the reader facing UI */
+    public HomepageBlocksRegistry $homepageBlocks;
+
     /**
      * Constructor.
      * Initialize template engine and assign basic template variables.
@@ -180,6 +184,7 @@ class PKPTemplateManager extends Smarty
         $this->template_class = \PKP\core\blade\SmartyTemplate::class;
 
         $this->metadataBlocks = new MetadataBlocksRegistry();
+        $this->homepageBlocks = new HomepageBlocksRegistry();
     }
 
     /**

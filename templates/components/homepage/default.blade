@@ -1,0 +1,7 @@
+@props([
+    'slug' => 'default',
+])
+
+<div {{ $attributes->merge(['class' => 'homepage-block homepage-block-' . $slug]) }}>
+    {!! $slot !!}
+</div>

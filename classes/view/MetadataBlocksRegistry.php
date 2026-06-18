@@ -1,7 +1,7 @@
 <?php
 
 /**
- * @file classes/view/MetadataBlockRepository.php
+ * @file classes/view/MetadataBlocksRegistry.php
  *
  * Copyright (c) 2026 Simon Fraser University
  * Copyright (c) 2026 John Willinsky
@@ -22,49 +22,8 @@ use PKP\plugins\PluginRegistry;
 use PKP\plugins\ThemePlugin;
 use PKP\view\MetadataBlock;
 
-class MetadataBlocksRegistry
+class MetadataBlocksRegistry extends BlocksRegistry
 {
-    /** @var Collection<MetadataBlock> */
-    protected Collection $_blocks;
-
-    /**
-     * True when the the default block
-     * registration process has been completed.
-     */
-    protected bool $hasRegistered = false;
-
-    public function __construct()
-    {
-        $this->_blocks = collect([]);
-    }
-
-    public function register(MetadataBlock $block): void
-    {
-        $this->_blocks->put($block->id, $block);
-    }
-
-    /**
-     * @param string $id The MetadataBlock::$id to remove from the registry.
-     */
-    public function unregister(string $id): void
-    {
-        $this->_blocks->forget($id);
-    }
-
-    public function get(): Collection
-    {
-        if (!$this->hasRegistered) {
-            $this->registerAll();
-        }
-
-        return $this->_blocks;
-    }
-
-    /**
-     * @param ?array $blockIds An array of block ids. If passed, it will
-     * only load those blocks and will pass them back in the order specified
-     * in the array.
-     */
     public function load(?array $blockIds = null): Collection
     {
         $blocks = $this->get();

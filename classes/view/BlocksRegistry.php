@@ -1,0 +1,75 @@
+<?php
+
+/**
+ * @file classes/view/MetadataBlockRepository.php
+ *
+ * Copyright (c) 2026 Simon Fraser University
+ * Copyright (c) 2026 John Willinsky
+ * Distributed under the GNU GPL v3. For full terms see the file docs/COPYING.
+ *
+ * @class Repository
+ *
+ * @brief A repository to register and load metadata blocks.
+ */
+
+namespace PKP\view;
+
+use Illuminate\Support\Collection;
+
+abstract class BlocksRegistry
+{
+    /** @var Collection<Block> */
+    protected Collection $_blocks;
+
+    /**
+     * True when the the default block
+     * registration process has been completed.
+     */
+    protected bool $hasRegistered = false;
+
+    public function __construct()
+    {
+        $this->_blocks = collect([]);
+    }
+
+    public function register(Block $block): void
+    {
+        $this->_blocks->put($block->id, $block);
+    }
+
+    /**
+     * @param string $id The MetadataBlock::$id to remove from the registry.
+     */
+    public function unregister(string $id): void
+    {
+        $this->_blocks->forget($id);
+    }
+
+    public function get(): Collection
+    {
+        if (!$this->hasRegistered) {
+            $this->registerAll();
+        }
+
+        return $this->_blocks;
+    }
+
+    /**
+     * Load all registered blocks
+     *
+     * This function passes all registered data to the templates
+     *
+     * @param ?array $blockIds An array of block ids. If passed, it will
+     * only load those blocks and will pass them back in the order specified
+     * in the array.
+     */
+    abstract public function load(?array $blockIds = null): Collection;
+
+    /**
+     * Register blocks from all sources
+     *
+     * Load default blocks along with any custom blocks from
+     * plugins and themes.
+     */
+    abstract protected function registerAll(): void;
+}

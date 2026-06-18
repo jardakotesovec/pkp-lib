@@ -55,6 +55,7 @@ abstract class Layout extends Component
         view()->share('locales', $this->getLocales());
         view()->share('filterGalleys', [$this, 'filterGalleys']);
         view()->share('primaryFileGenreIds', [$this, 'primaryFileGenreIds']);
+        view()->share('homepageBlocks', [$this, 'getHomepageBlocks']);
 
         if ($this->isPublicationPage()) {
             view()->share('metadata', [$this, 'getMetadataBlocks']);
@@ -183,6 +184,19 @@ abstract class Layout extends Component
      * preprint landing page?
      */
     abstract public function isPublicationPage() : bool;
+
+    /**
+     * Get the homepage blocks
+     *
+     *
+     * @param ?array $blockIds An array of block ids. If passed, it will
+     * only load those blocks and will pass them back in the order specified
+     * in the array.
+     */
+    public function getHomepageBlocks(?array $blockIds = null): Collection
+    {
+        return $this->templateMgr->homepageBlocks->load($blockIds);
+    }
 
     /**
      * Get the article metadata blocks
