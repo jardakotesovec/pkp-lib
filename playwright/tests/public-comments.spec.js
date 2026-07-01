@@ -310,6 +310,132 @@ test.describe('Public comments', () => {
 			}
 		},
 	);
+
+	// Row 6 (wave-12 cross-check gap G1): the legacy PublicComments.cy.js
+	// drove the enable/disable toggle through the settings UI — the rows
+	// above reach the enabled state via the scenario passthrough, so the
+	// ContentCommentsForm surface (Website → Content → Comments) and the
+	// DISABLE direction had no owner. This test covers both directions
+	// through the real form.
+	test(
+		'comments enable toggle in Website settings gates the article comments section both ways',
+		{tag: '@regression'},
+		async ({pkpApi, browser, baseURL, asUser}) => {
+			const tag = uniqueTag(test.info(), 'tgl');
+
+			// Scratch journal with public comments OFF (the context
+			// default) + a published article to read.
+			const {context} = await pkpApi.createJournal({
+				tag,
+				users: [{username: 'dbarnes', roles: ['manager']}],
+				issues: [{...SCRATCH_ISSUE, published: true}],
+			});
+			const spec = submissionPublished({tag});
+			spec.journal = context.path;
+			spec.publications[0].issue = {...SCRATCH_ISSUE};
+			const {submission} = await pkpApi.createSubmission(spec);
+			const articleUrl = `/index.php/${context.path}/article/view/${submission.id}`;
+
+			const anonCtx = await browser.newContext({
+				baseURL,
+				storageState: {cookies: [], origins: []},
+			});
+			try {
+				// OFF: the article renders (abstract bounds the negative)
+				// without the comments section.
+				const anonPage = await anonCtx.newPage();
+				await anonPage.goto(articleUrl);
+				await expect(
+					anonPage.getByText(
+						'A fully-processed, published article in scenario form.',
+					),
+				).toBeVisible({timeout: 15_000});
+				await expect(anonPage.locator('#public-comments')).toHaveCount(0);
+
+				// Manager flips the toggle ON through the real form:
+				// Website → Content → Comments (ContentCommentsForm,
+				// template tab ids #content / #publicComments).
+				const managerCtx = await asUser('dbarnes');
+				const managerPage = await managerCtx.newPage();
+				const flipToggle = async (check) => {
+					await managerPage.goto(
+						`/index.php/${context.path}/management/settings/website`,
+					);
+					const panel = managerPage.locator('#publicComments');
+					const checkbox = panel.locator(
+						'input[name="enablePublicComments"]',
+					);
+					// The tracked PkpTabs hydrate after load and can
+					// reassert the default (Appearance) tab over an
+					// early click — retry the tab pair until the panel's
+					// form actually shows (observed: clicks landed, hash
+					// updated, page snapped back to Appearance/Theme).
+					await expect(async () => {
+						await managerPage.locator('#content-button').click();
+						await managerPage
+							.locator('#publicComments-button')
+							.click();
+						await expect(checkbox).toBeVisible({timeout: 3_000});
+					}).toPass({timeout: 30_000});
+					if (check) {
+						await checkbox.check();
+					} else {
+						await checkbox.uncheck();
+					}
+					// useFetch tunnels PUT via POST + method override
+					// (patterns.md); accept either. Persistence is
+					// asserted from the PUT response body (the contexts
+					// API echoes the saved setting) — sturdier than the
+					// transient Saved badge under tab re-renders.
+					await Promise.all([
+						managerPage.waitForResponse(
+							(r) =>
+								/\/api\/v1\/contexts\/\d+/.test(r.url()) &&
+								['POST', 'PUT'].includes(r.request().method()) &&
+								r.ok(),
+						),
+						panel
+							.locator('form')
+							.first()
+							.getByRole('button', {name: 'Save', exact: true})
+							.click(),
+					]);
+					// Persistence via a fresh GET — the PUT response body
+					// can be evicted before .json() under tab re-renders
+					// ("No resource with given identifier").
+					const verify = await managerPage.request.get(
+						`/index.php/${context.path}/api/v1/contexts/${context.id}`,
+					);
+					expect(verify.ok()).toBeTruthy();
+					expect((await verify.json()).enablePublicComments).toBe(
+						check,
+					);
+				};
+
+				await flipToggle(true);
+
+				// ON: the comments section mounts for anonymous readers
+				// (with the log-in-to-comment gate — row 2's surface).
+				await anonPage.goto(articleUrl);
+				await expect(anonPage.locator('#public-comments')).toBeVisible({
+					timeout: 15_000,
+				});
+
+				// ...and OFF again: the disable direction the legacy spec
+				// asserted.
+				await flipToggle(false);
+				await anonPage.goto(articleUrl);
+				await expect(
+					anonPage.getByText(
+						'A fully-processed, published article in scenario form.',
+					),
+				).toBeVisible({timeout: 15_000});
+				await expect(anonPage.locator('#public-comments')).toHaveCount(0);
+			} finally {
+				await anonCtx.close();
+			}
+		},
+	);
 });
 
 /**

@@ -1,5 +1,9 @@
 // @ts-check
+const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 const {test, expect} = require('../support/base-test.js');
+const {UserProfilePage} = require('../pages/UserProfilePage.js');
 const submissionDraft = require('../../../../playwright/fixtures/scenarios/submission-draft.js');
 /**
  * API smoke — row #47 in docs/e2e-playwright-migration.md.
@@ -21,23 +25,14 @@ const submissionDraft = require('../../../../playwright/fixtures/scenarios/submi
  *   - a CSRF token can be pulled from the page for authenticated
  *     writes
  *
- * We drive this through session auth (dbarnes's baseline storageState)
- * rather than the apiToken round-trip, because:
- *   1. The apiToken flow requires an `api_key_secret` in
- *      config.test.inc.php, which the Cypress suite mutates at runtime
- *      (writeFile replacing the empty secret). Mutating the test
- *      config from a spec is fragile under parallel workers; the
- *      session-cookie path is the same has.user middleware gate and
- *      is how every other Playwright spec talks to the API.
- *   2. Session auth covers the same HasUser / HasRole middleware
- *      stack the apiToken decoder exercises (see
- *      DecodeApiTokenWithValidation.php:48 — HasUser runs for both
- *      auth modes).
- *   3. The "create/delete API key" UI is the legacy profile
- *      ApiProfileForm, a distinct concern from "API is reachable".
- *      Porting that form is a future row if we ever need it.
+ * Rows 1–4 drive this through session auth (dbarnes's baseline
+ * storageState); since wave 1 the harness seeds `api_key_secret` into
+ * config.test.inc.php (seed-test-config.js), so row 5 covers the
+ * apiToken round-trip too — through a THROWAWAY user (never dbarnes:
+ * the seeded users are read-only and an enabled key would persist for
+ * the whole run). Row 6 covers the role-gate rejection arm.
  *
- * Four tests:
+ * Six tests:
  *   1. CSRF token — authenticated page exposes
  *      `window.pkp.currentUser.csrfToken`. This is the canonical source
  *      for the X-Csrf-Token header every existing Playwright spec
@@ -64,6 +59,23 @@ const submissionDraft = require('../../../../playwright/fixtures/scenarios/submi
  *      assertion, but with parallel-safe seeding (each worker seeds
  *      its own tagged submission) and a substring assertion on the
  *      title rather than item-count parity.
+ *   5. API-key token round-trip — a scratch-journal throwaway user
+ *      enables + generates a key via the profile API Key tab (one
+ *      action: APIProfileForm::execute sets apiKeyEnabled AND apiKey
+ *      together on "Create API Key"); a cookie-less APIRequestContext
+ *      authenticates GET /submissions with ?apiToken=…; a
+ *      tampered-signature token is rejected 400
+ *      (SignatureInvalidException branch) and a validly-signed token
+ *      over an unknown key is rejected 401 (the unauthorized branch) —
+ *      both per DecodeApiTokenWithValidation.php:100-118.
+ *   6. Role-gate rejection — atester (author-only) gets a JSON 401
+ *      from the manager-gated /users endpoint while their session
+ *      remains good for /submissions (positive control), and an
+ *      anonymous request gets 401 from has.user. NOTE: HasRoles.php:70-73
+ *      responds HTTP 401 (Response::HTTP_UNAUTHORIZED) for an
+ *      authenticated-but-underprivileged user where HTTP semantics
+ *      (and the locale key `api.403.unauthorized`!) suggest 403 — the
+ *      assertion pins the actual behavior; see the app-changes ledger.
  *
  * Helper note: lib/pkp/playwright/support/api.js ships
  * `pkpApi.getCsrfToken()` pointing at `/index.php/index/api/v1/_csrf`
@@ -235,4 +247,244 @@ test.describe('API smoke', () => {
 			).toBeTruthy();
 		},
 	);
+
+	test(
+		'API-key token authenticates a cookie-less request; bad tokens are rejected',
+		{tag: '@regression'},
+		async ({pkpApi, asUser, request}) => {
+			// Throwaway user in a scratch journal — NEVER a seeded user:
+			// the baseline 17 are read-only shared state and an enabled
+			// API key would persist for the rest of the run. Password is
+			// set to the suite's username-twice derivation so `asUser`
+			// (which derives via getPassword) can drive the login.
+			const suffix = `w${test.info().parallelIndex}${Math.random().toString(36).slice(2, 8)}`;
+			const tag = `apikey-${suffix}`;
+			const username = `uapikey${suffix}`;
+			const {context} = await pkpApi.createJournal({
+				tag,
+				name: {en: `API key smoke ${tag}`},
+				users: [
+					{
+						username,
+						password: username + username,
+						email: `${username}@mailinator.com`,
+						givenName: 'Throwaway',
+						familyName: `ApiKey ${suffix}`,
+						roles: ['author'],
+					},
+				],
+			});
+
+			// Enable + generate the key through the profile UI. One
+			// button does both: APIProfileForm::execute() sets
+			// apiKeyEnabled=1 AND apiKey=sha1(time()) on the
+			// API_KEY_NEW action — there is no separate enable toggle
+			// on current main. The displayed value is the JWT signed
+			// with config's api_key_secret (seeded since wave 1).
+			const ctx = await asUser(username);
+			const page = await ctx.newPage();
+			const profile = new UserProfilePage(page, context.path);
+			await profile.goto('apiSettings');
+			await expect(profile.apiKeyField()).toHaveValue('None');
+			await profile.submitApiKeyAction('Create API Key');
+			const apiToken = await profile.apiKeyField().inputValue();
+			expect(apiToken, 'profile shows a JWT after Create API Key').toMatch(
+				/^[\w-]+\.[\w-]+\.[\w-]+$/,
+			);
+
+			// The `request` fixture carries no cookies in this file (no
+			// test.use({user})), so the ONLY credential below is the
+			// apiToken query param (DecodeApiTokenWithValidation reads
+			// it — see getApiToken, middleware line 155-163).
+			const submissionsUrl = `/index.php/${context.path}/api/v1/submissions`;
+
+			// Control: same cookie-less context without a token is 401 —
+			// proves the token is what authenticates the next call.
+			const anon = await request.get(submissionsUrl);
+			expect(anon.status(), 'tokenless request rejected').toBe(401);
+
+			const ok = await request.get(
+				`${submissionsUrl}?apiToken=${encodeURIComponent(apiToken)}`,
+			);
+			expect(ok.status(), 'apiToken-authenticated request succeeds').toBe(
+				200,
+			);
+			const body = await ok.json();
+			expect(body).toHaveProperty('items');
+			expect(Array.isArray(body.items)).toBe(true);
+			expect(body).toHaveProperty('itemsMax');
+
+			// Tampered token: flip a character in the middle of the
+			// signature segment. firebase/php-jwt raises
+			// SignatureInvalidException, which the middleware maps to
+			// HTTP 400 + api.400.invalidApiToken
+			// (DecodeApiTokenWithValidation.php:108-112). The plan row
+			// presumed 401 — 400 is the actual contract.
+			const tampered = tamperJwtSignature(apiToken);
+			const bad = await request.get(
+				`${submissionsUrl}?apiToken=${encodeURIComponent(tampered)}`,
+			);
+			expect(bad.status(), 'tampered-signature token rejected').toBe(400);
+			expect(await bad.json()).toHaveProperty('error');
+
+			// Forged token: validly signed with the known test secret
+			// but over an api key no user owns — exercises the 401
+			// unauthorized branch (middleware line 100-105: user lookup
+			// by key fails). This is the closest realizable shape of the
+			// plan row's "tampered token returns 401".
+			const forged = signHs256(
+				['0'.repeat(40)], // sha1-shaped key that belongs to nobody
+				readTestApiKeySecret(),
+			);
+			const unknown = await request.get(
+				`${submissionsUrl}?apiToken=${encodeURIComponent(forged)}`,
+			);
+			expect(
+				unknown.status(),
+				'validly-signed token over an unknown key rejected',
+			).toBe(401);
+			expect(await unknown.json()).toHaveProperty('error');
+		},
+	);
+
+	test(
+		'role-gated endpoint rejects insufficient roles',
+		{tag: '@regression'},
+		async ({asUser, request}) => {
+			// atester is the only seeded author-without-editor-roles —
+			// the meaningful subject for a role-gate rejection.
+			const ctx = await asUser('atester');
+			const page = await ctx.newPage();
+			await page.goto('/index.php/publicknowledge/dashboard/mySubmissions');
+			await expect(page).not.toHaveURL(/\/login/);
+
+			// In-page fetches so the session cookies ride along. /users
+			// is gated to admin/manager/sub-editor
+			// (PKPUserController::getRouteGroupMiddleware); /submissions
+			// allows authors and acts as the positive control proving
+			// the session itself is live — i.e. the rejection below is
+			// the ROLE gate, not an expired login.
+			const probes = await page.evaluate(async () => {
+				const get = async (url) => {
+					const r = await fetch(url, {
+						headers: {Accept: 'application/json'},
+					});
+					let body = null;
+					try {
+						body = await r.json();
+					} catch {
+						// keep null — content-type assertion below will fail loudly
+					}
+					return {status: r.status, body};
+				};
+				return {
+					users: await get('/index.php/publicknowledge/api/v1/users'),
+					submissions: await get(
+						'/index.php/publicknowledge/api/v1/submissions',
+					),
+				};
+			});
+
+			expect(
+				probes.submissions.status,
+				'positive control: author session lists submissions',
+			).toBe(200);
+
+			// HasRoles.php:70-73 responds Response::HTTP_UNAUTHORIZED
+			// (401) — not the semantically-expected 403 — for an
+			// authenticated user lacking the required roles. The locale
+			// key is even named `api.403.unauthorized`. Pin the actual
+			// behavior; flagged in the app-changes ledger.
+			expect(
+				probes.users.status,
+				'author-only session rejected from /users',
+			).toBe(401);
+			expect(probes.users.body).toHaveProperty('error');
+
+			// Anonymous arm: no session at all is turned away by
+			// has.user (HasUser.php:38-40) with the same JSON error
+			// shape.
+			const anon = await request.get(
+				'/index.php/publicknowledge/api/v1/users',
+			);
+			expect(anon.status(), 'anonymous request rejected').toBe(401);
+			expect(await anon.json()).toHaveProperty('error');
+		},
+	);
 });
+
+/**
+ * Flip one character in the middle of a JWT's signature segment so the
+ * HMAC no longer verifies. Middle, not last: base64url's final char
+ * only contributes 2-4 bits, so flipping it can decode to identical
+ * signature bytes and sail through verification.
+ *
+ * @param {string} jwt
+ * @returns {string}
+ */
+function tamperJwtSignature(jwt) {
+	const parts = jwt.split('.');
+	const sig = parts[2];
+	const i = Math.floor(sig.length / 2);
+	const flipped = sig[i] === 'A' ? 'B' : 'A';
+	parts[2] = sig.slice(0, i) + flipped + sig.slice(i + 1);
+	return parts.join('.');
+}
+
+/**
+ * Minimal HS256 JWT signer (header.payload.signature, base64url) — just
+ * enough to forge a validly-signed token without pulling in a JWT
+ * dependency. Mirrors what APIProfileForm::fetch produces via
+ * firebase/php-jwt's JWT::encode([$apiKey], $secret, 'HS256').
+ *
+ * @param {unknown} payload JSON-serializable payload
+ * @param {string} secret
+ * @returns {string}
+ */
+function signHs256(payload, secret) {
+	const b64url = (/** @type {Buffer|string} */ input) =>
+		Buffer.from(input)
+			.toString('base64')
+			.replace(/=+$/, '')
+			.replace(/\+/g, '-')
+			.replace(/\//g, '_');
+	const header = b64url(JSON.stringify({typ: 'JWT', alg: 'HS256'}));
+	const body = b64url(JSON.stringify(payload));
+	const signature = crypto
+		.createHmac('sha256', secret)
+		.update(`${header}.${body}`)
+		.digest('base64')
+		.replace(/=+$/, '')
+		.replace(/\+/g, '-')
+		.replace(/\//g, '_');
+	return `${header}.${body}.${signature}`;
+}
+
+/**
+ * Read the api_key_secret the harness seeded into config.test.inc.php
+ * (lib/pkp/playwright/scripts/seed-test-config.js) — reading it from
+ * disk keeps the forged-token arm in lockstep with whatever the server
+ * actually verifies against.
+ *
+ * @returns {string}
+ */
+function readTestApiKeySecret() {
+	const configPath = path.resolve(
+		__dirname,
+		'..',
+		'..',
+		'..',
+		'..',
+		'config.test.inc.php',
+	);
+	const config = fs.readFileSync(configPath, 'utf8');
+	const match = config.match(/^api_key_secret = "([^"]+)"$/m);
+	if (!match) {
+		throw new Error(
+			`api_key_secret not found in ${configPath} — the wave-1 ` +
+				'seed-test-config substitution is missing; API-key tokens ' +
+				'cannot be signed/verified.',
+		);
+	}
+	return match[1];
+}

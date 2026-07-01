@@ -529,4 +529,159 @@ test.describe('Reviewer suggestions', () => {
 		expect(suggestion.approvedAt).toBeTruthy();
 		expect(suggestion.reviewerId).toBe(suggestion.existingUserId);
 	});
+
+	// Wave-12 cross-check gap G2 (ZzeddSubmission.cy.js, the
+	// Add-Reviewer-LIST entry path + no-role enrollment branch): the two
+	// tests above enter via the suggestion-manager panel's More Actions;
+	// the legacy suite also asserted that suggestions surface inside the
+	// STANDALONE Add Reviewer dialog, and that selecting a suggestion
+	// whose email matches an existing user WITHOUT the reviewer role
+	// enrolls that user as it assigns them. One test covers both
+	// mechanisms; the legacy file's remaining permutations recombine
+	// these same two paths with the panel/create-new arcs above.
+	test('standalone Add Reviewer lists suggestions; assigning a no-role existing user enrolls them', {tag: '@regression'}, async ({pkpApi, asUser}) => {
+		const tag = uniqueTag('rsl');
+		const family = `Norole${alnum(tag)}`;
+		const username = `nr${alnum(tag)}`.slice(0, 30);
+		const email = `${username}@mailinator.com`;
+
+		// Existing SITE user with no reviewer role anywhere relevant:
+		// seeded as an author on a throwaway scratch journal so
+		// publicknowledge's role tables never see them.
+		await pkpApi.createJournal({
+			tag,
+			users: [
+				{
+					username,
+					password: `pw-${tag}`,
+					givenName: 'Nadia',
+					familyName: family,
+					roles: ['author'],
+				},
+			],
+		});
+
+		const {submission} = await pkpApi.createSubmission(
+			inReviewWithSuggestionsSpec({
+				tag,
+				title: `Suglist-${tag}`,
+				suggestions: [
+					{
+						givenName: 'Nadia',
+						familyName: family,
+						email,
+						affiliation: `Afflist-${tag}`,
+						suggestionReason: `Reason-${tag} list entry path`,
+					},
+				],
+			}),
+		);
+
+		const ctx = await asUser('dbarnes');
+		const page = await ctx.newPage();
+		await page.goto(
+			`/index.php/publicknowledge/en/dashboard/editorial?workflowSubmissionId=${submission.id}`,
+		);
+
+		// Enter through the reviewer manager's own Add Reviewer button —
+		// NOT the suggestion panel.
+		const reviewerManager = page.locator('[data-cy="reviewer-manager"]');
+		await expect(reviewerManager).toBeVisible({timeout: 20_000});
+		await reviewerManager
+			.getByRole('button', {name: 'Add Reviewer', exact: true})
+			.click();
+
+		// The dialog's "Select a Reviewer from Reviewer Suggestions"
+		// section lists the author suggestion. NOTE: the select button's
+		// ACCESSIBLE name renders as "Select undefined" (the sr-only
+		// label interpolates a missing name — a11y bug, ledger
+		// candidate), so match the visible aria-hidden text instead of
+		// the role name.
+		const modal = page.getByRole('dialog', {name: 'Add Reviewer'}).last();
+		await expect(modal).toBeVisible({timeout: 15_000});
+		await expect(
+			modal.getByRole('heading', {
+				name: 'Select a Reviewer from Reviewer Suggestions',
+			}),
+		).toBeVisible({timeout: 15_000});
+		const suggestionItem = modal
+			.getByRole('listitem')
+			.filter({hasText: `Nadia ${family}`})
+			.first();
+		await expect(suggestionItem).toBeVisible({timeout: 15_000});
+		await suggestionItem
+			.locator('button', {hasText: 'Select Reviewer'})
+			.first()
+			.click();
+
+		// Email matches an existing user without the reviewer role → the
+		// assignment form opens against that user (enrollment happens on
+		// save). Anchor on the submit button, not form visibility — the
+		// side-modal wrapper computes visibility:hidden while content is
+		// interactive (ledger §2 row 4).
+		// The dialog hosts several forms (enroll + notify template); the
+		// enrollment branch is the one carrying the prefilled
+		// "Search By Name" user picker ("Enroll an Existing User as
+		// Reviewer" — the no-role branch under test).
+		const assignForm = modal
+			.locator('form')
+			.filter({has: page.getByRole('textbox', {name: /Search By Name/})})
+			.last();
+		await expect(
+			assignForm.getByRole('textbox', {name: /Search By Name/}),
+		).toHaveValue(new RegExp(family), {timeout: 20_000});
+		const submitButton = assignForm
+			.getByRole('button', {name: 'Add Reviewer', exact: true})
+			.last();
+		await expect(submitButton).toBeEnabled({timeout: 20_000});
+		await expect(
+			assignForm.locator('input[name="responseDueDate"]'),
+		).toHaveValue(/\d{4}-\d{2}-\d{2}/, {timeout: 15_000});
+		// The enroll branch's prefilled equal due dates are accepted by
+		// the form (the date-bump dance the create-new branch needs would
+		// trigger a form refresh here that wipes the user selection —
+		// patterns rule 14 family).
+		const [enrollResponse] = await Promise.all([
+			page.waitForResponse(
+				(response) =>
+					response.url().includes('enroll-reviewer') &&
+					response.request().method() === 'POST',
+				{timeout: 20_000},
+			),
+			submitButton.click(),
+		]);
+		expect(enrollResponse.status()).toBe(200);
+		expect((await enrollResponse.json()).status).toBe(true);
+
+		// On success the dialog pops back to the selection step instead of
+		// closing, and the reviewer manager behind it does not live-refresh
+		// (the legacy dataChanged event is dropped on this path — ledger
+		// §2). The freshly-enrolled user even reappears inside the same
+		// dialog's Locate-a-Reviewer list, so in-dialog absence checks
+		// can't work; reload and assert the end state instead (the API
+		// approvedAt check below covers the suggestion's consumption).
+		await page.reload();
+
+		// Assigned: the reviewer manager lists them...
+		await expect(reviewerManager).toContainText(`Nadia ${family}`, {
+			timeout: 20_000,
+		});
+		// ...the suggestion left the unapproved panel (sole suggestion →
+		// panel unmounts)...
+		await expect(
+			page.locator('[data-cy="reviewer-suggestion-manager"]'),
+		).toHaveCount(0, {timeout: 20_000});
+
+		// ...and the no-role user was ENROLLED + linked: the suggestion
+		// row records approval against the existing account, and the
+		// review assignment exists for that user.
+		const res = await page.request.get(
+			`/index.php/publicknowledge/api/v1/submissions/${submission.id}/reviewers/suggestions`,
+		);
+		expect(res.ok()).toBeTruthy();
+		const body = await res.json();
+		const suggestion = body.items.find((item) => item.email === email);
+		expect(suggestion.approvedAt).toBeTruthy();
+		expect(suggestion.reviewerId).toBeTruthy();
+	});
 });
