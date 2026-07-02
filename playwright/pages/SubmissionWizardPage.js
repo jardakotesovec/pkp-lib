@@ -38,6 +38,33 @@ exports.SubmissionWizardPage = class SubmissionWizardPage extends BasePage {
 		this.submitButton = page.getByRole('button', {
 			name: /^Submit$/,
 		});
+		/**
+		 * Footer-scoped primary Submit button — use this one for
+		 * enabled/disabled gate assertions so the confirm dialog's own
+		 * Submit can never match.
+		 */
+		this.footerSubmit = page
+			.locator('.submissionWizard__footer')
+			.getByRole('button', {name: /^Submit$/});
+		/**
+		 * Footer "Cancel" link-button. Rendered only when the current
+		 * user may cancel the draft (the submitting author, managers,
+		 * site admins — wizard.tpl `{if $canCancelSubmission}`).
+		 */
+		this.cancelButton = page.locator('#cancelSubmission');
+		/**
+		 * The "Submitting to the … section in …" caption + its Change
+		 * control. Rendered only when the journal offers 2+ eligible
+		 * sections or 2+ submission languages (`{if $submittingTo}`).
+		 */
+		this.submittingToCaption = page.locator('#submission-configuration');
+		/**
+		 * The Review step's warning banner ("There are one or more
+		 * problems…"), painted when the entry validation fails.
+		 */
+		this.reviewErrorsBanner = page.locator(
+			'.submissionWizard__review_errors',
+		);
 	}
 
 	/**
@@ -653,5 +680,59 @@ exports.SubmissionWizardPage = class SubmissionWizardPage extends BasePage {
 				has: this.page.getByRole('heading', {name: heading}),
 			})
 			.first();
+	}
+
+	/**
+	 * Locator for a single item inside a Review panel (e.g. the
+	 * "Abstract" item of the "Details (English)" panel) — the hook for
+	 * per-field validation errors painted onto the Review step.
+	 *
+	 * @param {string|RegExp} panelHeading
+	 * @param {string|RegExp} itemHeading
+	 */
+	reviewPanelItem(panelHeading, itemHeading) {
+		return this.reviewPanel(panelHeading)
+			.locator('.submissionWizard__reviewPanel__item')
+			.filter({
+				has: this.page.getByRole('heading', {name: itemHeading}),
+			})
+			.first();
+	}
+
+	/**
+	 * The "* Required" marker of a Details-step field's label for a
+	 * given locale (FormFieldLabel renders `.pkpFormFieldLabel__required`
+	 * only when the field's isRequired flag is set). Use to assert
+	 * section-derived requirement flags, e.g. the abstract requirement.
+	 *
+	 * @param {string} field   e.g. 'abstract'
+	 * @param {string} [locale='en']
+	 */
+	detailsFieldRequiredMarker(field, locale = 'en') {
+		return this.page
+			.locator('.pkpFormField', {
+				has: this.page.locator(
+					`#titleAbstract-${field}-control-${locale}`,
+				),
+			})
+			.locator('.pkpFormFieldLabel__required');
+	}
+
+	/**
+	 * Cancel the draft via the footer Cancel link-button: confirm the
+	 * warning dialog ("…delete the submission and all associated
+	 * data…") and wait for the "Submission cancelled" landing page.
+	 */
+	async cancel() {
+		await this.cancelButton.click();
+		const dialog = this.page.getByRole('dialog');
+		await expect(dialog).toBeVisible({timeout: 10_000});
+		await expect(dialog).toContainText(
+			'This will delete the submission and all associated data. This action cannot be undone.',
+		);
+		await dialog.getByRole('button', {name: 'OK'}).click();
+		await expect(
+			this.page.getByRole('heading', {name: 'Submission cancelled'}),
+		).toBeVisible({timeout: 20_000});
 	}
 };
