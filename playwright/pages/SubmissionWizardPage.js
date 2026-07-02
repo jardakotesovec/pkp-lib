@@ -833,6 +833,29 @@ exports.SubmissionWizardPage = class SubmissionWizardPage extends BasePage {
 	}
 
 	/**
+	 * Click the footer's "Save for Later" button and wait for the
+	 * "Saved for Later" landing page. The wizard renders the control
+	 * twice (header + footer) — this scopes to the footer.
+	 *
+	 * The Vue handler flushes pending autosaves on a 1s poll before
+	 * firing the PUT saveForLater and redirecting, so allow a generous
+	 * navigation window.
+	 */
+	async saveForLater() {
+		await this.page
+			.locator('.submissionWizard__footer')
+			.getByRole('button', {name: 'Save for Later'})
+			.click();
+		await this.page.waitForURL(/\/submission\/saved/, {
+			timeout: 30_000,
+			waitUntil: 'commit',
+		});
+		await expect(
+			this.page.getByRole('heading', {name: 'Saved for Later'}),
+		).toBeVisible({timeout: 20_000});
+	}
+
+	/**
 	 * Cancel the draft via the footer Cancel link-button: confirm the
 	 * warning dialog ("…delete the submission and all associated
 	 * data…") and wait for the "Submission cancelled" landing page.
