@@ -150,12 +150,26 @@ exports.SubmissionWizardPage = class SubmissionWizardPage extends BasePage {
 	 * Click the wizard footer's primary Continue button. Scoped to the
 	 * submission wizard footer so the (unrelated) "continue" strings
 	 * anywhere else on the page can't match.
+	 *
+	 * The wizard's step handler can swallow a click that lands while an
+	 * autosave is in flight (no DOM signal — the button stays enabled),
+	 * so a bare click intermittently strands the test on the same step
+	 * under parallel load. Returns only once the current-step label has
+	 * actually moved, re-clicking if a click was eaten.
 	 */
 	async continueStep() {
-		await this.page
+		const current = this.page.locator('.pkpSteps__step__label--current');
+		const before = ((await current.textContent()) ?? '').trim();
+		const button = this.page
 			.locator('.submissionWizard__footer')
-			.getByRole('button', {name: 'Continue'})
-			.click();
+			.getByRole('button', {name: 'Continue'});
+		await expect(async () => {
+			if (((await current.textContent()) ?? '').trim() !== before) {
+				return; // a previous click registered; step advanced
+			}
+			await button.click();
+			await expect(current).not.toHaveText(before, {timeout: 3000});
+		}).toPass({timeout: 21000});
 	}
 
 	/**

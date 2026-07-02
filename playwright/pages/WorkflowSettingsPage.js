@@ -15,6 +15,8 @@ const {BasePage} = require('./BasePage.js');
  * Tab-id cheat sheet (button id = `${tabId}-button`, panel id = tabId):
  *   Submission → disableSubmissions | instructions | metadata
  *                | components | contributorRoles
+ *   Review     → reviewSetup | reviewerGuidance | reviewForms
+ *                [| reviewerRecommendations]
  *
  * Save dance mirrors WebsiteSettingsPage.saveForm: Save click →
  * contexts API PUT (tunnelled via POST + X-Http-Method-Override) →
@@ -49,6 +51,24 @@ exports.WorkflowSettingsPage = class WorkflowSettingsPage extends BasePage {
 		await this.page.locator('#submission-button').click();
 		await this.page.locator('#metadata-button').click();
 		const panel = this.page.locator('#metadata');
+		await expect(panel.locator('form').first()).toBeVisible({
+			timeout: 15_000,
+		});
+		return panel;
+	}
+
+	/**
+	 * Open the Setup side tab under the outer Review tab and return its
+	 * panel locator (the PKPReviewSetupForm — review mode, deadlines,
+	 * reviewer-suggestion toggle …). Only rendered on apps with a review
+	 * stage. Save via `saveForm(panel)` — the panel holds one form.
+	 *
+	 * @returns {Promise<import('@playwright/test').Locator>} the tab panel
+	 */
+	async openReviewSetupTab() {
+		await this.page.locator('#review-button').click();
+		await this.page.locator('#reviewSetup-button').click();
+		const panel = this.page.locator('#reviewSetup');
 		await expect(panel.locator('form').first()).toBeVisible({
 			timeout: 15_000,
 		});
