@@ -39,6 +39,42 @@
             "description": "Submission-wizard citations (references) metadata mode. Same values as keywords.",
             "enum": [0, "0", "enable", "request", "require"]
         },
+        "subjects": {
+            "description": "Submission-wizard subjects metadata mode. Same values as keywords.",
+            "enum": [0, "0", "enable", "request", "require"]
+        },
+        "disciplines": {
+            "description": "Submission-wizard disciplines metadata mode. Same values as keywords.",
+            "enum": [0, "0", "enable", "request", "require"]
+        },
+        "agencies": {
+            "description": "Submission-wizard supporting-agencies metadata mode. Same values as keywords.",
+            "enum": [0, "0", "enable", "request", "require"]
+        },
+        "coverage": {
+            "description": "Submission-wizard coverage metadata mode. Same values as keywords.",
+            "enum": [0, "0", "enable", "request", "require"]
+        },
+        "rights": {
+            "description": "Submission-wizard rights metadata mode. Same values as keywords.",
+            "enum": [0, "0", "enable", "request", "require"]
+        },
+        "source": {
+            "description": "Submission-wizard source metadata mode. Same values as keywords.",
+            "enum": [0, "0", "enable", "request", "require"]
+        },
+        "type": {
+            "description": "Submission-wizard type metadata mode. Same values as keywords.",
+            "enum": [0, "0", "enable", "request", "require"]
+        },
+        "fundingStatement": {
+            "description": "Submission-wizard funding-statement metadata mode. Same values as keywords.",
+            "enum": [0, "0", "enable", "request", "require"]
+        },
+        "dataAvailability": {
+            "description": "Submission-wizard data-availability-statement metadata mode. Same values as keywords.",
+            "enum": [0, "0", "enable", "request", "require"]
+        },
         "reviewerSuggestionEnabled": { "type": "boolean" },
         "defaultReviewMode": {
             "description": "1 = anonymous reviewer / disclosed author, 2 = double anonymous, 3 = open.",

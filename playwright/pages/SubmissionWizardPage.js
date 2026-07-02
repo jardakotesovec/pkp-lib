@@ -719,6 +719,106 @@ exports.SubmissionWizardPage = class SubmissionWizardPage extends BasePage {
 	}
 
 	/**
+	 * Locator for any wizard form field's control by its deterministic
+	 * id: `{formId}-{fieldName}-control[-{locale}]` (FieldBase
+	 * compileId). E.g. fieldControl('forTheEditors', 'subjects', 'en')
+	 * → the Subjects chip input of the For the Editors metadata form.
+	 *
+	 * @param {string} formId  e.g. 'forTheEditors', 'titleAbstract', 'dataAvailability'
+	 * @param {string} field   field name, e.g. 'subjects', 'keywords', 'type'
+	 * @param {string|null} [locale='en']  null for non-multilingual fields
+	 */
+	fieldControl(formId, field, locale = 'en') {
+		const suffix = locale ? `-${locale.replace('@', '_')}` : '';
+		return this.page.locator(`#${formId}-${field}-control${suffix}`);
+	}
+
+	/**
+	 * The "* Required" marker attached to a field's label
+	 * (FormFieldLabel renders `.pkpFormFieldLabel__required` only when
+	 * the field's isRequired flag is set). Anchored via label[for] so
+	 * it never collides with sibling fields.
+	 *
+	 * @param {string} formId
+	 * @param {string} field
+	 * @param {string|null} [locale='en']
+	 */
+	fieldRequiredMarker(formId, field, locale = 'en') {
+		const suffix = locale ? `-${locale.replace('@', '_')}` : '';
+		return this.page.locator(
+			`label[for="${formId}-${field}-control${suffix}"] .pkpFormFieldLabel__required`,
+		);
+	}
+
+	/**
+	 * A selected chip (PkpBadge) of a controlled-vocabulary field,
+	 * scoped by its visible label. The badge carries a Remove button
+	 * whose accessible name is "Remove {label}".
+	 *
+	 * @param {string} formId
+	 * @param {string} field
+	 * @param {string} label  chip text
+	 * @param {string} [locale='en']
+	 */
+	vocabChip(formId, field, label, locale = 'en') {
+		const control = this.fieldControl(formId, field, locale);
+		return this.page
+			.locator('.pkpAutosuggest', {has: control})
+			.locator('.pkpAutosuggest__selection', {hasText: label})
+			.first();
+	}
+
+	/**
+	 * Add a chip to a controlled-vocabulary field: type the term, wait
+	 * for the combobox dropdown to offer it (FieldControlledVocab always
+	 * offers the raw typed text — free-text entry never depends on the
+	 * stored vocabulary), press Enter, and wait for the badge.
+	 *
+	 * Do NOT assert on which *stored* suggestions appear: the journal
+	 * scoping of suggestions is broken as-built (app-changes.md §2 row
+	 * 62 — empty on most journals, cross-journal leak on one).
+	 *
+	 * @param {string} formId
+	 * @param {string} field
+	 * @param {string} term
+	 * @param {string} [locale='en']
+	 */
+	async addVocabChip(formId, field, term, locale = 'en') {
+		const input = this.fieldControl(formId, field, locale);
+		await input.click();
+		await input.pressSequentially(term, {delay: 20});
+		// The dropdown's first option is the raw typed text (allowCustom).
+		await expect(
+			this.page
+				.locator('.autosuggest__results-item', {hasText: term})
+				.first(),
+		).toBeVisible({timeout: 10_000});
+		await input.press('Enter');
+		await expect(this.vocabChip(formId, field, term, locale)).toBeVisible({
+			timeout: 10_000,
+		});
+	}
+
+	/**
+	 * Toggle a secondary locale's sub-fields on the wizard form that
+	 * contains the given control (FormLocales renders one toggle bar
+	 * per form, so scope by a control inside the target form).
+	 *
+	 * @param {string} formId
+	 * @param {string} field    any field of the form, used for scoping
+	 * @param {string} localeLabel  visible toggle label, e.g. 'French (Canada)'
+	 * @param {string} [locale='en']  locale of the scoping control
+	 */
+	async toggleFormLocale(formId, field, localeLabel, locale = 'en') {
+		const form = this.page.locator('form.pkpForm', {
+			has: this.fieldControl(formId, field, locale),
+		});
+		await form
+			.locator('button.pkpFormLocales__locale', {hasText: localeLabel})
+			.click();
+	}
+
+	/**
 	 * Cancel the draft via the footer Cancel link-button: confirm the
 	 * warning dialog ("…delete the submission and all associated
 	 * data…") and wait for the "Submission cancelled" landing page.
