@@ -1,7 +1,7 @@
 // @ts-check
 const {expect} = require('@playwright/test');
 const {BasePage} = require('./BasePage.js');
-const {setTinyMceContent} = require('../support/tinymce.js');
+const {setTinyMceContent, getTinyMceContent} = require('../support/tinymce.js');
 
 /**
  * POM for the Discussion Manager — a Vue component that ships in
@@ -229,6 +229,44 @@ exports.DiscussionManagerPage = class DiscussionManagerPage extends BasePage {
 			.first()
 			.click();
 	}
+
+	/**
+	 * The row-title button (DiscussionManagerCellName's PkpButton). Use for
+	 * counting occurrences of an item title across the whole manager — e.g.
+	 * asserting a template-auto-created task is not DUPLICATED on stage
+	 * re-entry (rule 21).
+	 * @param {string} title
+	 */
+	titleButton(title) {
+		return this.root.getByRole('button', {name: title, exact: true});
+	}
+
+	/**
+	 * Assert exactly `n` items with the given title exist in the manager.
+	 * @param {string} title
+	 * @param {number} n
+	 */
+	async expectItemCount(title, n) {
+		await expect(this.titleButton(title)).toHaveCount(n, {timeout: 15_000});
+	}
+
+	/**
+	 * Open a row's More Actions menu and assert its "Edit" item is present
+	 * but DISABLED — the closed-task state (rule 11 / rule 12: Edit is
+	 * disabled on closed items). Headless-UI MenuItems render a disabled
+	 * item with aria-disabled, which toBeDisabled() honours. Closes the
+	 * menu afterwards so the assertion leaves no open portal behind.
+	 * @param {string} title
+	 */
+	async expectEditActionDisabled(title) {
+		await this.row(title)
+			.getByRole('button', {name: 'More Actions'})
+			.click();
+		const edit = this.page.getByRole('menuitem', {name: 'Edit', exact: true});
+		await expect(edit).toBeVisible();
+		await expect(edit).toBeDisabled();
+		await this.page.keyboard.press('Escape');
+	}
 };
 
 /**
@@ -327,6 +365,97 @@ class DiscussionFormModal {
 	async cancel() {
 		await this.modal.getByRole('button', {name: 'Cancel', exact: true}).click();
 	}
+
+	/**
+	 * Uncheck a participant by visible full name. Managers may create an
+	 * item without joining it (rule 6), so a manager can uncheck the
+	 * pre-checked "current user" box.
+	 * @param {string} fullName
+	 */
+	async uncheckParticipant(fullName) {
+		const label = this.modal
+			.locator('label:has(input[name="participants"])')
+			.filter({hasText: fullName})
+			.first();
+		await label.locator('input[name="participants"]').uncheck();
+	}
+
+	/**
+	 * Assert a participant checkbox is checked — used to verify a template
+	 * pre-selects participants from its user groups (rule 20).
+	 * @param {string} fullName
+	 */
+	async expectParticipantChecked(fullName) {
+		const input = this.modal
+			.locator('label:has(input[name="participants"])')
+			.filter({hasText: fullName})
+			.first()
+			.locator('input[name="participants"]');
+		await expect(input).toBeChecked();
+	}
+
+	/** Assert a participant checkbox is NOT checked. */
+	async expectParticipantNotChecked(fullName) {
+		const input = this.modal
+			.locator('label:has(input[name="participants"])')
+			.filter({hasText: fullName})
+			.first()
+			.locator('input[name="participants"]');
+		await expect(input).not.toBeChecked();
+	}
+
+	/** The current value of the Name field. */
+	titleValue() {
+		return this.title.inputValue();
+	}
+
+	/** The current value of the Due date field. */
+	dueDateValue() {
+		return this.dateDue.inputValue();
+	}
+
+	/** Whether the "task details" toggle is checked (item is a task). */
+	isTaskInfoChecked() {
+		return this.taskInfoAdd.isChecked();
+	}
+
+	/** The current description (head-message) rich-text content. */
+	descriptionContent() {
+		return getTinyMceContent(this.page, 'discussionForm-description-control');
+	}
+
+	/**
+	 * Apply a template from the Details step's template picker. The picker
+	 * fetches every stage template on mount and lists each as a button
+	 * `TASK - {title}` / `DISCUSSION - {title}` (DiscussionManagerTemplates.vue),
+	 * so a name-substring match on the (unique) title finds it directly —
+	 * no need to drive the keyup-debounced Search box. `fromTemplate` fires
+	 * a full-screen spinner while the prefill loads — wait for it to clear.
+	 * @param {string} templateTitle
+	 */
+	async applyTemplate(templateTitle) {
+		const btn = this.modal
+			.getByRole('button', {name: new RegExp(escapeRegExp(templateTitle))})
+			.first();
+		await expect(btn).toBeVisible({timeout: 10_000});
+		const resp = this.page
+			.waitForResponse(
+				(r) =>
+					/\/tasks\/fromTemplate\//.test(r.url()) && r.status() === 200,
+				{timeout: 10_000},
+			)
+			.catch(() => null);
+		await btn.click();
+		await resp;
+		// The prefill applies the template's title to the Name field — the
+		// clearest signal the form values have settled.
+		await expect(this.title).toHaveValue(templateTitle, {timeout: 10_000});
+	}
+}
+
+/** Escape a string for safe use inside a RegExp literal. */
+function escapeRegExp(s) {
+	return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 /**
@@ -390,6 +519,27 @@ class DiscussionDisplayModal {
 			.toBeDisabled();
 	}
 
+	/**
+	 * The view-modal's task status checkbox (DiscussionManagerTaskInfo's
+	 * "Start this task" / "Complete this task" control, `statusUpdateValue`).
+	 */
+	statusCheckbox() {
+		return this.modal.locator('input[name="statusUpdateValue"]');
+	}
+
+	/**
+	 * Assert the view-modal status control is present but DISABLED. Two
+	 * cases rely on this: a CLOSED task (rule 11 — completion is one-way,
+	 * the modal offers no reopen) and a task with NO responsible
+	 * participant (rule 10 — an auto-created task can't be started until
+	 * an owner is edited in). DiscussionManagerTaskInfo disables the
+	 * checkbox in both.
+	 */
+	async expectStatusControlDisabled() {
+		await expect(this.statusCheckbox()).toBeVisible();
+		await expect(this.statusCheckbox()).toBeDisabled();
+	}
+
 	async checkCloseThisDiscussion() {
 		await this.modal
 			.getByLabel('Close this Discussion', {exact: false})
@@ -440,15 +590,43 @@ class DiscussionDisplayModal {
 	}
 
 	async save() {
+		// A display-mode Save either posts a reply (…/tasks/{id}/notes) or a
+		// status change (…/tasks/{id}/start|close|open, tunnelled through POST
+		// by useFetch). Wait for that write so callers don't race the list
+		// refetch / a navigation that would cancel the in-flight request.
+		const resp = this.page
+			.waitForResponse(
+				(r) =>
+					r.request().method() === 'POST' &&
+					/\/tasks\/\d+\/(start|close|open|notes)/.test(r.url()),
+				{timeout: 15_000},
+			)
+			.catch(() => null);
 		await this.modal.getByRole('button', {name: 'Save', exact: true}).click();
+		await resp;
 	}
 
 	/**
 	 * Close the display modal via the header X (DialogClose). Available
 	 * regardless of write access, unlike the form's "Cancel" button
 	 * which only renders for users who can edit.
+	 *
+	 * A display-mode status/message Save leaves the form's changed-state
+	 * dirty (display mode never calls setInitialState), so closing after
+	 * one raises the warnOnClose confirm ("The data on this form has
+	 * changed…") — accept it. The underlying write already persisted, so
+	 * discarding the unsaved UI state is safe.
 	 */
 	async close() {
 		await this.modal.getByRole('button', {name: 'Close', exact: true}).click();
+		const warn = this.page
+			.locator('[data-cy="dialog"]')
+			.filter({hasText: 'continue without saving'});
+		if (await warn.isVisible().catch(() => false)) {
+			await warn.getByRole('button', {name: 'Yes', exact: true}).click();
+		}
+		await expect(
+			this.modal.getByRole('heading', {name: this.title, level: 1}),
+		).toHaveCount(0, {timeout: 10_000});
 	}
 }
