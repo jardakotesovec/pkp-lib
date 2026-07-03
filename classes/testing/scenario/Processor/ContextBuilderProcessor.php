@@ -106,7 +106,7 @@ class ContextBuilderProcessor implements ScenarioProcessor
             'subjects', 'disciplines', 'agencies', 'coverage', 'rights',
             'source', 'type', 'fundingStatement', 'dataAvailability',
             // Review setup (PKPReviewSetupForm)
-            'reviewerSuggestionEnabled', 'defaultReviewMode',
+            'reviewerSuggestionEnabled', 'reviewerAccessKeysEnabled', 'defaultReviewMode',
             'numWeeksPerResponse', 'numWeeksPerReview',
             'numDaysBeforeReviewResponseReminderDue', 'numDaysAfterReviewResponseReminderDue',
             'numDaysBeforeReviewSubmitReminderDue', 'numDaysAfterReviewSubmitReminderDue',

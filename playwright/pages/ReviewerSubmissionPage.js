@@ -269,6 +269,33 @@ exports.ReviewerSubmissionPage = class ReviewerSubmissionPage extends BasePage {
 	}
 
 	/**
+	 * Step 3: click "Submit Review" expecting the review to be REFUSED
+	 * (a required field is empty — the OJS recommendation, or a required
+	 * review-form element). The submit is gated either client-side (the
+	 * reviewStep3Required.js / fbv required validator blocks before any
+	 * navigation) or server-side (saveStep re-renders step 3 with the
+	 * error) — so the confirm dialog is optional. Either way the wizard
+	 * must stay on step 3 and never reach the completion view. Asserts
+	 * exactly that.
+	 */
+	async submitAndExpectBlocked() {
+		await this.step3Form
+			.getByRole('button', {name: /^Submit Review$/i})
+			.click();
+		const confirmDialog = this.page.locator('[data-cy="dialog"]');
+		if (await confirmDialog.isVisible().catch(() => false)) {
+			await confirmDialog
+				.getByRole('button', {name: 'OK', exact: true})
+				.click();
+			await expect(confirmDialog).toBeHidden({timeout: 10_000});
+		}
+		// The review must NOT have completed: still on step 3, no
+		// completion view. Give the (possible) server round-trip a beat.
+		await expect(this.completedHeading).toBeHidden({timeout: 10_000});
+		await expect(this.step3Form).toBeVisible({timeout: 10_000});
+	}
+
+	/**
 	 * Step 3: "Save for Later". Saves comments/recommendation without
 	 * validation and stays on Step 3 (the server answers a
 	 * DataChangedEvent, no navigation). Waits on the saveStep response —

@@ -76,6 +76,7 @@
             "enum": [0, "0", "enable", "request", "require"]
         },
         "reviewerSuggestionEnabled": { "type": "boolean" },
+        "reviewerAccessKeysEnabled": { "type": "boolean" },
         "defaultReviewMode": {
             "description": "1 = anonymous reviewer / disclosed author, 2 = double anonymous, 3 = open.",
             "enum": [1, 2, 3]
