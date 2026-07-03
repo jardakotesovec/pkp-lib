@@ -52,6 +52,23 @@ class PublicationsProcessor implements ScenarioProcessor
         'licenseUrl', 'pages', 'urlPath', 'datePublished',
     ];
 
+    /**
+     * The subset of METADATA_FIELDS that are multilingual in the
+     * publication schema (schemas/publication.json `multilingual: true`).
+     * A spec that passes a plain value here (e.g. `"title": "Foo"`
+     * instead of `{"en": "Foo"}`) would otherwise store a corrupt `'0'`
+     * locale row that 500s every dashboard list containing the
+     * submission — normalizeMultilingual() wraps such values under the
+     * submission's locale instead, matching what the wizard form posts
+     * for a single-locale entry.
+     */
+    private const MULTILINGUAL_METADATA_FIELDS = [
+        'title', 'subtitle', 'prefix', 'abstract', 'plainLanguageSummary',
+        'keywords', 'subjects', 'disciplines', 'supportingAgencies',
+        'coverage', 'type', 'source', 'rights', 'fundingStatement',
+        'dataAvailability', 'copyrightHolder',
+    ];
+
     /** Directory of bundled fixture files for galley uploads, relative to the OJS root. */
     private const FIXTURE_FILES_DIR = 'lib/pkp/playwright/fixtures/files';
 
@@ -74,6 +91,7 @@ class PublicationsProcessor implements ScenarioProcessor
         $tag = $spec['tag'];
         $publications = $spec['publications'];
         $previousPublicationId = $ctx->firstPublicationId();
+        $locale = Repo::submission()->get($ctx->submissionId())->getData('locale');
 
         foreach ($publications as $i => $pubSpec) {
             if ($i === 0) {
@@ -91,7 +109,7 @@ class PublicationsProcessor implements ScenarioProcessor
                 $previousPublicationId = $publicationId;
             }
 
-            $this->applyMetadataAndAttributes($publicationId, $pubSpec, $tag);
+            $this->applyMetadataAndAttributes($publicationId, $pubSpec, $tag, $locale);
 
             // Galleys are created in the production stage before the editor
             // hits Publish, so seed them ahead of the publish() call — DOI
@@ -133,14 +151,16 @@ class PublicationsProcessor implements ScenarioProcessor
      * Merge metadata (with the tag appended to every title locale) plus
      * UI-settable attributes onto the target publication via one edit() call.
      */
-    private function applyMetadataAndAttributes(int $publicationId, array $pubSpec, string $tag): void
+    private function applyMetadataAndAttributes(int $publicationId, array $pubSpec, string $tag, string $locale): void
     {
         $metadata = $pubSpec['metadata'] ?? [];
         $editParams = [];
 
         foreach (self::METADATA_FIELDS as $field) {
             if (array_key_exists($field, $metadata)) {
-                $editParams[$field] = $metadata[$field];
+                $editParams[$field] = in_array($field, self::MULTILINGUAL_METADATA_FIELDS, true)
+                    ? $this->normalizeMultilingual($metadata[$field], $locale)
+                    : $metadata[$field];
             }
         }
 
@@ -170,6 +190,26 @@ class PublicationsProcessor implements ScenarioProcessor
 
         $publication = Repo::publication()->get($publicationId);
         Repo::publication()->edit($publication, $editParams);
+    }
+
+    /**
+     * Normalize a multilingual metadata value that arrived as a plain
+     * (non-locale-keyed) value to `[locale => value]`. Locale-keyed maps
+     * pass through untouched; a plain string — or a plain list for the
+     * array-type fields like `keywords` — is wrapped under the
+     * submission's locale. Without this, a plain-string `title` would be
+     * persisted under the numeric `'0'` locale, a corrupt row that makes
+     * every dashboard list containing the submission respond HTTP 500.
+     */
+    private function normalizeMultilingual(mixed $value, string $locale): mixed
+    {
+        if (is_string($value)) {
+            return [$locale => $value];
+        }
+        if (is_array($value) && $value !== [] && array_is_list($value)) {
+            return [$locale => $value];
+        }
+        return $value;
     }
 
     /**
