@@ -102,6 +102,26 @@ exports.DashboardPage = class DashboardPage extends BasePage {
 	}
 
 	/**
+	 * All view links of one dashboard's nav group (excludes the
+	 * Start A New Submission entry, which carries no currentViewId).
+	 *
+	 * @param {'editorial'|'reviewAssignments'|'mySubmissions'} op
+	 */
+	viewLinks(op) {
+		return this.nav.locator(`a[href*="dashboard/${op}?currentViewId="]`);
+	}
+
+	/**
+	 * A sortable column-header button. Its accessible name is the column
+	 * label plus the screen-reader-only "Sort" suffix ("ID Sort").
+	 *
+	 * @param {string} columnLabel
+	 */
+	sortButton(columnLabel) {
+		return this.page.getByRole('button', {name: `${columnLabel} Sort`});
+	}
+
+	/**
 	 * Narrow the list server-side by a unique whitespace-free token.
 	 * The search listens on debounced keyup — type it, don't fill it.
 	 *
