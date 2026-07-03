@@ -50,6 +50,25 @@ exports.ReviewerManagerPage = class ReviewerManagerPage extends BasePage {
 	}
 
 	/**
+	 * Open the AUTHOR's read-mostly review-stage view for their own
+	 * submission (dashboard/mySubmissions) and wait for the redacted
+	 * reviewer manager to mount. The panel only renders when the round
+	 * carries at least one open + completed review (rule 5 of
+	 * review-anonymity); callers that expect it absent should assert on
+	 * the modal instead.
+	 *
+	 * @param {number} submissionId
+	 * @param {{journalPath?: string, locale?: string}} [opts]
+	 */
+	async gotoAuthorWorkflow(submissionId, {journalPath = 'publicknowledge', locale = 'en'} = {}) {
+		await this.page.goto(
+			`/index.php/${journalPath}/${locale}/dashboard/mySubmissions?workflowSubmissionId=${submissionId}`,
+			{waitUntil: 'commit'},
+		);
+		await expect(this.manager).toBeVisible({timeout: 20_000});
+	}
+
+	/**
 	 * The reviewer manager table row for a reviewer, matched by the
 	 * reviewer's full name.
 	 *
