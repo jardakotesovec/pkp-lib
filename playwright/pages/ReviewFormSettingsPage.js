@@ -347,15 +347,18 @@ exports.ReviewFormSettingsPage = class ReviewFormSettingsPage extends BasePage {
 
 	/**
 	 * Create one review-form element end-to-end: question (rich,
-	 * primary locale), required flag, item type by visible label
-	 * (e.g. 'Extended text box', 'Radio buttons (you can only choose
-	 * one)'), and possible-response options for the multiple-response
-	 * types. Saves and waits for the elements grid to list the new
-	 * question.
+	 * primary locale), required flag, author-visibility flag, item type
+	 * by visible label (e.g. 'Extended text box', 'Radio buttons (you can
+	 * only choose one)'), and possible-response options for the
+	 * multiple-response types. Saves and waits for the elements grid to
+	 * list the new question.
 	 *
-	 * @param {{question: string, typeLabel: string, required?: boolean, options?: string[], locale?: string}} spec
+	 * `included` (Included in message to author) defaults ON in the form;
+	 * pass `included: false` to clear it (author-only-withheld elements).
+	 *
+	 * @param {{question: string, typeLabel: string, required?: boolean, included?: boolean, options?: string[], locale?: string}} spec
 	 */
-	async addElement({question, typeLabel, required = false, options = [], locale = 'en'}) {
+	async addElement({question, typeLabel, required = false, included = true, options = [], locale = 'en'}) {
 		const form = await this.openCreateElementForm();
 
 		const questionId = await form
@@ -369,6 +372,11 @@ exports.ReviewFormSettingsPage = class ReviewFormSettingsPage extends BasePage {
 		if (required) {
 			// fbv checkboxes keep their template ids unsuffixed.
 			await form.locator('input#required').check();
+		}
+		// Included defaults checked (initData sets included=1 for new
+		// elements); only touch it when the caller wants it cleared.
+		if (!included) {
+			await form.locator('input#included').uncheck();
 		}
 
 		await form
@@ -386,5 +394,36 @@ exports.ReviewFormSettingsPage = class ReviewFormSettingsPage extends BasePage {
 				.last()
 				.getByText(question),
 		).toBeVisible({timeout: 15_000});
+	}
+
+	/**
+	 * Re-open a saved element's Edit form from the Form Items grid, to
+	 * read back its persisted flags/values (the elements grid shows only
+	 * the question, so the round-trip through Edit is how required /
+	 * included persistence is verified). Expands the element row's hidden
+	 * controls and clicks its Edit action, returning the
+	 * #reviewFormElementForm.
+	 *
+	 * @param {string} question  unique substring of the element's question
+	 * @returns {Promise<import('@playwright/test').Locator>}
+	 */
+	async openEditElementForm(question) {
+		const grid = this.page.locator('#reviewFormElementsGridContainer').last();
+		const row = grid
+			.locator(`tr.gridRow[id^="${ELEMENTS_GRID_ID}-row-"]`, {hasText: question})
+			.last();
+		const rowId = await row.getAttribute('id');
+		if (!rowId) {
+			throw new Error(`review form element row for '${question}' not found`);
+		}
+		const showExtras = this.page.locator(`tr#${rowId} a.show_extras`);
+		if ((await showExtras.count()) > 0) {
+			await showExtras.click();
+		}
+		await this.page.locator(`a[id^="${rowId}-edit-button-"]`).last().click();
+		const form = this.page.locator('form#reviewFormElementForm').last();
+		await expect(form).toBeVisible({timeout: 15_000});
+		await waitForJQueryIdle(this.page);
+		return form;
 	}
 };
