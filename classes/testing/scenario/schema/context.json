@@ -39,6 +39,10 @@
             "description": "Submission-wizard citations (references) metadata mode. Same values as keywords.",
             "enum": [0, "0", "enable", "request", "require"]
         },
+        "citationsMetadataLookup": {
+            "description": "References Metadata Lookup. When true, the References tab opens the structured citation edit form and exposes the Reprocess actions; off by default.",
+            "type": "boolean"
+        },
         "subjects": {
             "description": "Submission-wizard subjects metadata mode. Same values as keywords.",
             "enum": [0, "0", "enable", "request", "require"]

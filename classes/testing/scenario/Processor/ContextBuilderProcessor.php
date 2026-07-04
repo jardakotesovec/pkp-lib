@@ -102,7 +102,7 @@ class ContextBuilderProcessor implements ScenarioProcessor
             'enablePublicComments', 'enableAnnouncements', 'publishingMode',
             // Submission-wizard metadata modes (PKPMetadataSettingsForm):
             // 0 | 'enable' | 'request' | 'require'
-            'keywords', 'citations',
+            'keywords', 'citations', 'citationsMetadataLookup',
             'subjects', 'disciplines', 'agencies', 'coverage', 'rights',
             'source', 'type', 'fundingStatement', 'dataAvailability',
             // Review setup (PKPReviewSetupForm)
