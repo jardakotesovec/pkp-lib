@@ -107,7 +107,7 @@ class ContextBuilderProcessor implements ScenarioProcessor
             // 0 | 'enable' | 'request' | 'require'
             'keywords', 'citations', 'citationsMetadataLookup',
             'subjects', 'disciplines', 'agencies', 'coverage', 'rights',
-            'source', 'type', 'fundingStatement', 'dataAvailability',
+            'source', 'type', 'fundingStatement', 'dataAvailability', 'dataCitations',
             // Review setup (PKPReviewSetupForm)
             'reviewerSuggestionEnabled', 'reviewerAccessKeysEnabled', 'defaultReviewMode',
             'numWeeksPerResponse', 'numWeeksPerReview',

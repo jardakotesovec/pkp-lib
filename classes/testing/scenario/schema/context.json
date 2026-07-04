@@ -93,6 +93,10 @@
             "description": "Submission-wizard data-availability-statement metadata mode. Same values as keywords.",
             "enum": [0, "0", "enable", "request", "require"]
         },
+        "dataCitations": {
+            "description": "Submission-wizard data-citations metadata mode. Same values as keywords. Any non-disabled value surfaces the publication Data tab's Data Citations manager.",
+            "enum": [0, "0", "enable", "request", "require"]
+        },
         "reviewerSuggestionEnabled": { "type": "boolean" },
         "reviewerAccessKeysEnabled": { "type": "boolean" },
         "defaultReviewMode": {
