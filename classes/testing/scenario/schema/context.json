@@ -44,7 +44,45 @@
         "printIssn": { "type": "string" },
         "enablePublicComments": { "type": "boolean" },
         "enableAnnouncements": { "type": "boolean" },
+        "numAnnouncementsHomepage": { "type": "integer", "minimum": 0 },
         "publishingMode": { "type": "integer" },
+        "additionalHomeContent": { "type": "object", "additionalProperties": true },
+        "sidebar": {
+            "description": "Ordered array of block-plugin names (e.g. 'informationblockplugin') rendered in the frontend sidebar. Empty by default on scratch journals.",
+            "type": "array",
+            "items": { "type": "string" }
+        },
+        "announcements": {
+            "description": "Context-scoped announcements to seed. Each renders in the reader announcement list and (when the journal's enableAnnouncements + numAnnouncementsHomepage gate is met) the home page's announcements section.",
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["title"],
+                "additionalProperties": false,
+                "properties": {
+                    "title": { "$ref": "#/$defs/localizedString" },
+                    "descriptionShort": { "$ref": "#/$defs/localizedString" },
+                    "description": { "$ref": "#/$defs/localizedString" },
+                    "dateExpire": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" }
+                }
+            }
+        },
+        "highlights": {
+            "description": "Context-scoped highlights to seed. Presence drives the reader home page's highlights carousel (rendered by the active theme).",
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["title", "url"],
+                "additionalProperties": false,
+                "properties": {
+                    "title": { "$ref": "#/$defs/localizedString" },
+                    "description": { "$ref": "#/$defs/localizedString" },
+                    "url": { "type": "string" },
+                    "urlText": { "$ref": "#/$defs/localizedString" },
+                    "sequence": { "type": "integer", "minimum": 0 }
+                }
+            }
+        },
         "keywords": {
             "description": "Submission-wizard keywords metadata mode. 0 disables; 'enable' shows in workflow only; 'request'/'require' expose it to authors.",
             "enum": [0, "0", "enable", "request", "require"]

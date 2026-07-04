@@ -36,7 +36,9 @@ use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Mail;
 use PKP\core\PKPBaseController;
 use PKP\core\PKPRequest;
+use PKP\testing\bootstrap\Processor\AnnouncementProcessor;
 use PKP\testing\bootstrap\Processor\CategoryProcessor;
+use PKP\testing\bootstrap\Processor\HighlightProcessor;
 use PKP\testing\bootstrap\Processor\SectionProcessor;
 use PKP\testing\scenario\Processor\ContextBuilderProcessor;
 use PKP\testing\scenario\Processor\ReviewFormProcessor;
@@ -142,6 +144,25 @@ abstract class PKPContextScenarioController extends PKPBaseController
 
             if (!empty($spec['categories'])) {
                 $categoryProcessor->run($contextId, $spec['categories']);
+            }
+
+            // Context-scoped reader-surface content: announcements feed the
+            // announcement list + the home page's announcements section;
+            // highlights feed the home page's carousel. Both are cross-app.
+            if (!empty($spec['announcements'])) {
+                (new AnnouncementProcessor())->run(
+                    $contextId,
+                    $spec['announcements'],
+                    $spec['primaryLocale'] ?? 'en'
+                );
+            }
+
+            if (!empty($spec['highlights'])) {
+                (new HighlightProcessor())->run(
+                    $contextId,
+                    $spec['highlights'],
+                    $spec['primaryLocale'] ?? 'en'
+                );
             }
 
             $this->afterContextCreated($spec, $contextId);

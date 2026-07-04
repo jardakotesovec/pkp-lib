@@ -81,7 +81,7 @@ class ContextBuilderProcessor implements ScenarioProcessor
         // context schema — tests pass only the locales they care
         // about, everything else falls through to the Journal's
         // schema default.
-        foreach (['copyrightNotice', 'copyrightHolderOther', 'licenseTerms'] as $optional) {
+        foreach (['copyrightNotice', 'copyrightHolderOther', 'licenseTerms', 'additionalHomeContent'] as $optional) {
             if (isset($spec[$optional])) {
                 $data[$optional] = $spec[$optional];
             }
@@ -99,7 +99,8 @@ class ContextBuilderProcessor implements ScenarioProcessor
             // Distribution / front-end toggles
             'submitWithCategories', 'enableDois', 'doiPrefix', 'doiVersioning',
             'doiCreationTime', 'registrationAgency', 'onlineIssn', 'printIssn',
-            'enablePublicComments', 'enableAnnouncements', 'publishingMode',
+            'enablePublicComments', 'enableAnnouncements', 'numAnnouncementsHomepage',
+            'publishingMode',
             // Distribution → License defaults (drive the per-publication
             // license form's inherit/override defaults + publish-time snapshot)
             'copyrightHolderType', 'copyrightYearBasis', 'licenseUrl',
@@ -123,8 +124,11 @@ class ContextBuilderProcessor implements ScenarioProcessor
         // pubObject types auto-mint DOIs on publish). Default from the
         // OJS context schema is ['publication'], which is already what
         // our DOI tests want; pass through only when the test overrides
-        // explicitly.
-        foreach (['enabledDoiTypes'] as $optionalArray) {
+        // explicitly. `sidebar` is the ordered array of block-plugin
+        // names the frontend sidebar renders (journal-homepage /
+        // website-appearance-settings) — empty by default on every
+        // scratch journal, so a homepage/sidebar test seeds it here.
+        foreach (['enabledDoiTypes', 'sidebar'] as $optionalArray) {
             if (array_key_exists($optionalArray, $spec) && is_array($spec[$optionalArray])) {
                 $data[$optionalArray] = $spec[$optionalArray];
             }
