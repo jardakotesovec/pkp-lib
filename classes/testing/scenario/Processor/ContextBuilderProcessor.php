@@ -81,7 +81,7 @@ class ContextBuilderProcessor implements ScenarioProcessor
         // context schema — tests pass only the locales they care
         // about, everything else falls through to the Journal's
         // schema default.
-        foreach (['copyrightNotice'] as $optional) {
+        foreach (['copyrightNotice', 'copyrightHolderOther', 'licenseTerms'] as $optional) {
             if (isset($spec[$optional])) {
                 $data[$optional] = $spec[$optional];
             }
@@ -100,6 +100,9 @@ class ContextBuilderProcessor implements ScenarioProcessor
             'submitWithCategories', 'enableDois', 'doiPrefix', 'doiVersioning',
             'doiCreationTime', 'registrationAgency', 'onlineIssn', 'printIssn',
             'enablePublicComments', 'enableAnnouncements', 'publishingMode',
+            // Distribution → License defaults (drive the per-publication
+            // license form's inherit/override defaults + publish-time snapshot)
+            'copyrightHolderType', 'copyrightYearBasis', 'licenseUrl',
             // Submission-wizard metadata modes (PKPMetadataSettingsForm):
             // 0 | 'enable' | 'request' | 'require'
             'keywords', 'citations', 'citationsMetadataLookup',

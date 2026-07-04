@@ -16,6 +16,20 @@
         "supportedLocales": { "type": "array", "items": { "type": "string" } },
         "country": { "type": "string" },
         "copyrightNotice": { "type": "object", "additionalProperties": true },
+        "copyrightHolderOther": { "type": "object", "additionalProperties": true },
+        "licenseTerms": { "type": "object", "additionalProperties": true },
+        "copyrightHolderType": {
+            "description": "Journal default copyright-holder basis. 'author' → the article author string; 'context' (or unset) → the journal name; 'other' → the copyrightHolderOther statement. Drives the publication license form's default copyright-holder description + the publish-time snapshot.",
+            "enum": ["author", "context", "other"]
+        },
+        "copyrightYearBasis": {
+            "description": "Journal default copyright-year basis. 'issue' → the assigned issue's publish year; 'submission' → the publication's own publish year. Drives the publication license form's copyright-year description + the publish-time snapshot.",
+            "enum": ["issue", "submission"]
+        },
+        "licenseUrl": {
+            "description": "Journal default license URL (a CC URL). When set, the publication license form's License URL field gains an Override toggle and the publish-time snapshot inherits it onto un-overridden publications.",
+            "type": "string"
+        },
         "submitWithCategories": { "type": "boolean" },
         "enableDois": { "type": "boolean" },
         "doiPrefix": { "type": "string" },
