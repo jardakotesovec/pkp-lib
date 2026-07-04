@@ -159,15 +159,19 @@ exports.MediaFileManagerPage = class MediaFileManagerPage extends BasePage {
 	 * fresh on each call.
 	 *
 	 * @param {import('@playwright/test').Locator} modal
-	 * @param {string} filePath        absolute path of the file to add
+	 * @param {string|{name: string, mimeType: string, buffer: Buffer}} file
+	 *   absolute path of the file to add, or an in-memory descriptor
+	 *   (Playwright setInputFiles payload) — the latter lets a caller feed
+	 *   the SAME fixture under distinct names so the resulting rows are
+	 *   individually targetable.
 	 * @param {number} expectedCount   how many uploaded cards should
 	 *   exist after this upload settles
 	 */
-	async addFileToUploader(modal, filePath, expectedCount) {
+	async addFileToUploader(modal, file, expectedCount) {
 		await modal
 			.locator('#mediaFileAddUploader input[type="file"]')
 			.first()
-			.setInputFiles(filePath);
+			.setInputFiles(file);
 		await expect(this.uploaderGenreSelects(modal)).toHaveCount(expectedCount, {
 			timeout: 20_000,
 		});

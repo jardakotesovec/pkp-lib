@@ -81,6 +81,16 @@ class PublicationsProcessor implements ScenarioProcessor
     /** Publication-level attribute fields the spec accepts directly on a publications[] entry. */
     private const ATTRIBUTE_FIELDS = ['jatsPublicVisibility'];
 
+    /**
+     * Upper bound on files sharing a mediaFiles[] `group` label. A variant
+     * group pairs exactly one web file with one high-resolution file, so a
+     * seed group holds at most two. VariantGroup::link() enforces the same
+     * pairwise cap in product code (each link() call builds a fresh two-member
+     * group); the post-#12794 model exposes no constant, so the seed path keeps
+     * its own to fail loudly on an oversized spec.
+     */
+    private const MAX_GROUP_SIZE = 2;
+
     public function appliesTo(array $spec): bool
     {
         return !empty($spec['publications']);
@@ -337,8 +347,9 @@ class PublicationsProcessor implements ScenarioProcessor
      * makes — with the FIRST entry of the group as the primary (its common
      * metadata propagates to the sibling, matching the Link Media Files
      * modal where the web file is the left/primary side). Group size is
-     * capped at VariantGroup::MAX_GROUP_SIZE before any rows are written so
-     * oversized specs fail loudly instead of half-seeding.
+     * capped at self::MAX_GROUP_SIZE (a variant group pairs one web file
+     * with one high-res file) before any rows are written so oversized specs
+     * fail loudly instead of half-seeding.
      */
     private function seedMediaFiles(int $publicationId, array $mediaFileSpecs, ScenarioContext $ctx): array
     {
@@ -355,11 +366,11 @@ class PublicationsProcessor implements ScenarioProcessor
             }
         }
         foreach ($groupCounts as $group => $count) {
-            if ($count > \PKP\submissionFile\VariantGroup::MAX_GROUP_SIZE) {
+            if ($count > self::MAX_GROUP_SIZE) {
                 throw new \InvalidArgumentException(
                     "mediaFiles[] group '{$group}' has {$count} entries — variant groups hold at most "
-                    . \PKP\submissionFile\VariantGroup::MAX_GROUP_SIZE
-                    . ' files (VariantGroup::MAX_GROUP_SIZE), matching the Link Media Files UI.'
+                    . self::MAX_GROUP_SIZE
+                    . ' files (one web + one high-resolution), matching the Link Media Files UI.'
                 );
             }
         }
