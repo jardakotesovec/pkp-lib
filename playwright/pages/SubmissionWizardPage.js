@@ -842,14 +842,20 @@ exports.SubmissionWizardPage = class SubmissionWizardPage extends BasePage {
 	 * navigation window.
 	 */
 	async saveForLater() {
-		await this.page
+		const button = this.page
 			.locator('.submissionWizard__footer')
-			.getByRole('button', {name: 'Save for Later'})
-			.click();
-		await this.page.waitForURL(/\/submission\/saved/, {
-			timeout: 30_000,
-			waitUntil: 'commit',
-		});
+			.getByRole('button', {name: 'Save for Later'});
+		// Under parallel load the step handler can swallow a click that
+		// lands while an autosave is in flight (the button stays put, no
+		// navigation), so retry the click until the redirect commits.
+		await expect(async () => {
+			if (/\/submission\/saved/.test(this.page.url())) return; // already left
+			await button.click();
+			await this.page.waitForURL(/\/submission\/saved/, {
+				timeout: 8_000,
+				waitUntil: 'commit',
+			});
+		}).toPass({timeout: 40_000});
 		await expect(
 			this.page.getByRole('heading', {name: 'Saved for Later'}),
 		).toBeVisible({timeout: 20_000});
