@@ -16,6 +16,12 @@ exports.LoginPage = class LoginPage extends BasePage {
 		this.username = page.locator('input#username');
 		this.password = page.locator('input#password');
 		this.signIn = page.locator('form#login button');
+		// "Keep me logged in" — issues the Laravel `remember_web_*` cookie
+		// when submitted ticked. NB the template renders it with a stray
+		// `checked="$remember"` attribute (never interpolated), so the box
+		// is *checked by default* in the browser (see registration-login
+		// spec's remember-me test).
+		this.remember = page.locator('input#remember');
 		// Server-rendered failure message (LoginHandler::signIn re-renders
 		// frontend/pages/userLogin.tpl with `error` set; en string:
 		// "Invalid username/email or password. Please try again.").

@@ -46,6 +46,10 @@
         "enableAnnouncements": { "type": "boolean" },
         "numAnnouncementsHomepage": { "type": "integer", "minimum": 0 },
         "publishingMode": { "type": "integer" },
+        "disableUserReg": {
+            "description": "When true, closes public self-registration for this journal — RegistrationHandler::validate() renders the 'registration disabled' error at /user/register. Defaults to open (registration allowed).",
+            "type": "boolean"
+        },
         "additionalHomeContent": { "type": "object", "additionalProperties": true },
         "sidebar": {
             "description": "Ordered array of block-plugin names (e.g. 'informationblockplugin') rendered in the frontend sidebar. Empty by default on scratch journals.",

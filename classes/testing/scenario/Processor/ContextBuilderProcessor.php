@@ -100,7 +100,7 @@ class ContextBuilderProcessor implements ScenarioProcessor
             'submitWithCategories', 'enableDois', 'doiPrefix', 'doiVersioning',
             'doiCreationTime', 'registrationAgency', 'onlineIssn', 'printIssn',
             'enablePublicComments', 'enableAnnouncements', 'numAnnouncementsHomepage',
-            'publishingMode',
+            'publishingMode', 'disableUserReg',
             // Distribution → License defaults (drive the per-publication
             // license form's inherit/override defaults + publish-time snapshot)
             'copyrightHolderType', 'copyrightYearBasis', 'licenseUrl',
