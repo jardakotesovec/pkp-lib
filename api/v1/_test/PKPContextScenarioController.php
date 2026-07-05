@@ -97,6 +97,7 @@ abstract class PKPContextScenarioController extends PKPBaseController
         $categoryProcessor = new CategoryProcessor();
         $reviewFormProcessor = new ReviewFormProcessor();
         $reviewFormsResult = null;
+        $categoriesResult = null;
 
         // No DB::transaction wrapper — running each processor in its
         // own implicit transaction lets Postgres release row locks (in
@@ -143,7 +144,9 @@ abstract class PKPContextScenarioController extends PKPBaseController
             }
 
             if (!empty($spec['categories'])) {
-                $categoryProcessor->run($contextId, $spec['categories']);
+                $categoriesResult = $this->flattenCategoryIds(
+                    $categoryProcessor->run($contextId, $spec['categories'])
+                );
             }
 
             // Context-scoped reader-surface content: announcements feed the
@@ -181,7 +184,31 @@ abstract class PKPContextScenarioController extends PKPBaseController
             // when assigning reviewers without scraping the settings grid.
             $response['reviewForms'] = $reviewFormsResult;
         }
+        if ($categoriesResult !== null) {
+            // Flat { path => id } map of every seeded category (all depths) so
+            // tests can hit the category cover-image ops (fullSize/thumbnail
+            // take an `id`) and the category REST surface without scraping a
+            // reader page (which exposes no id when a category has no cover).
+            $response['categories'] = $categoriesResult;
+        }
         return response()->json($response, Response::HTTP_OK);
+    }
+
+    /**
+     * Flatten CategoryProcessor's nested `path => ['id', 'children']` tree to a
+     * single `path => id` map across every depth. Paths are unique per journal,
+     * so the flat map is unambiguous.
+     */
+    private function flattenCategoryIds(array $tree): array
+    {
+        $flat = [];
+        foreach ($tree as $path => $node) {
+            $flat[$path] = $node['id'];
+            if (!empty($node['children'])) {
+                $flat += $this->flattenCategoryIds($node['children']);
+            }
+        }
+        return $flat;
     }
 
     /**

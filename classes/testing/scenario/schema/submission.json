@@ -160,6 +160,10 @@
                         }
                     ]
                 },
+                "categories": {
+                    "type": "array",
+                    "items": { "type": "string", "minLength": 1 }
+                },
                 "published": { "type": "boolean" },
                 "galleys": {
                     "type": "array",

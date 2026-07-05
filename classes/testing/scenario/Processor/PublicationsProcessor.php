@@ -121,6 +121,18 @@ class PublicationsProcessor implements ScenarioProcessor
 
             $this->applyMetadataAndAttributes($publicationId, $pubSpec, $tag, $locale);
 
+            // Category assignment (publication_categories) mirrors the
+            // Publication → Issue tab's Categories field, which posts
+            // categoryIds and lands via the same
+            // Repo::publication()->assignCategoriesToPublication() call
+            // (classes/publication/DAO.php). Seed it BEFORE publish so the
+            // assignment is in place when the reader browses the category
+            // (the category landing page filters the search builder by
+            // categoryIds — see PKPCatalogHandler::category()).
+            if (!empty($pubSpec['categories'])) {
+                $this->assignCategories($publicationId, $pubSpec['categories'], $ctx);
+            }
+
             // Galleys are created in the production stage before the editor
             // hits Publish, so seed them ahead of the publish() call — DOI
             // minting and the publish event then see them like production.
@@ -200,6 +212,43 @@ class PublicationsProcessor implements ScenarioProcessor
 
         $publication = Repo::publication()->get($publicationId);
         Repo::publication()->edit($publication, $editParams);
+    }
+
+    /**
+     * Resolve a list of category paths to their ids within the submission's
+     * context and assign them to the publication, exactly as the Publication
+     * → Issue tab's Categories field does (categoryIds →
+     * Repo::publication()->assignCategoriesToPublication). Paths are scoped to
+     * the submission's context so a scratch journal's categories can't collide
+     * with the bootstrap journal's; an unknown path fails loudly rather than
+     * seeding a silently-unassigned publication.
+     *
+     * @param string[] $categoryPaths
+     */
+    private function assignCategories(int $publicationId, array $categoryPaths, ScenarioContext $ctx): void
+    {
+        $contextId = $ctx->submissionContextId();
+        $idsByPath = [];
+        $categories = Repo::category()->getCollector()
+            ->filterByPaths($categoryPaths)
+            ->filterByContextIds([$contextId])
+            ->getMany();
+        foreach ($categories as $category) {
+            $idsByPath[$category->getPath()] = (int)$category->getId();
+        }
+
+        $categoryIds = [];
+        foreach ($categoryPaths as $path) {
+            if (!isset($idsByPath[$path])) {
+                throw new \RuntimeException(
+                    "publications[].categories path '{$path}' matches no category in context {$contextId}. "
+                    . 'Seed it in the journal scenario spec\'s categories[].'
+                );
+            }
+            $categoryIds[] = $idsByPath[$path];
+        }
+
+        Repo::publication()->assignCategoriesToPublication($publicationId, $categoryIds);
     }
 
     /**

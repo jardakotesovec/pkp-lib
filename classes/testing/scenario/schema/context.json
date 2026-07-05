@@ -265,6 +265,7 @@
             "properties": {
                 "path": { "type": "string" },
                 "title": { "type": "object" },
+                "sortOption": { "type": "string" },
                 "children": { "type": "array", "items": { "$ref": "#/$defs/category" } }
             }
         }

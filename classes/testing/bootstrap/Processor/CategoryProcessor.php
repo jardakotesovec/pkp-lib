@@ -24,7 +24,7 @@ class CategoryProcessor
 {
     /**
      * @param int $contextId
-     * @param array $categorySpecs [{path, title, children?}]
+     * @param array $categorySpecs [{path, title, sortOption?, children?}]
      * @return array Map of path => ['id' => int, 'children' => [...]]
      */
     public function run(int $contextId, array $categorySpecs): array
@@ -36,12 +36,19 @@ class CategoryProcessor
     {
         $map = [];
         foreach ($categorySpecs as $spec) {
-            $category = Repo::category()->newDataObject([
+            $data = [
                 'contextId' => $contextId,
                 'parentId' => $parentId,
                 'path' => $spec['path'],
                 'title' => $spec['title'],
-            ]);
+            ];
+            // Optional "Sort by" order (CategoryForm's sortOption, e.g.
+            // "title-ASC" / "datePublished-DESC") so tests can seed the
+            // setting the reader-side category page is meant to honour.
+            if (isset($spec['sortOption'])) {
+                $data['sortOption'] = $spec['sortOption'];
+            }
+            $category = Repo::category()->newDataObject($data);
             $id = Repo::category()->add($category);
 
             $children = [];
