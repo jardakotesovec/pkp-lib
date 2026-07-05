@@ -157,6 +157,113 @@ exports.UserProfilePage = class UserProfilePage extends BasePage {
 	}
 
 	/**
+	 * A form field addressed by its `name` attribute, scoped to the tab's
+	 * form. Multilingual fbv text fields render as `name="affiliation[en]"`
+	 * (see templates/form/textInput.tpl), single-valued ones as plain
+	 * `name="phone"`; both are stable (unlike the uniqid-suffixed ids).
+	 *
+	 * @param {keyof typeof TABS} tab
+	 * @param {string} name e.g. 'preferredPublicName[en]', 'phone', 'country'
+	 */
+	field(tab, name) {
+		return this.form(tab).locator(`[name="${name}"]`);
+	}
+
+	/** Fill a plain text / tel / email / textarea field by `name`. */
+	async fillField(tab, name, value) {
+		await this.field(tab, name).fill(value);
+	}
+
+	/** Select an `<option>` by value in a `<select>` field by `name`. */
+	async selectField(tab, name, value) {
+		await this.field(tab, name).selectOption(value);
+	}
+
+	/** The tab's Save button (fbvFormButtons → `button.submitFormButton`). */
+	saveButton(tab) {
+		return this.form(tab).locator('button.submitFormButton');
+	}
+
+	/**
+	 * Click Save WITHOUT awaiting the save POST. Use when client-side
+	 * validation is expected to BLOCK submission (e.g. an invalid Homepage
+	 * URL — the FBV url validator fails in the browser and no POST fires, so
+	 * `save()`'s `waitForResponse` would hang). The caller then asserts the
+	 * inline `label.error`.
+	 *
+	 * @param {keyof typeof TABS} tab
+	 */
+	async clickSaveExpectingClientError(tab) {
+		await this.saveButton(tab).click();
+	}
+
+	// ── Roles tab ───────────────────────────────────────────────────────
+
+	/**
+	 * The CURRENT-context self-registration checkbox for a role group.
+	 * `assignRoleContent` renders the request context's reader/author/
+	 * reviewer groups FIRST (userGroups.tpl), ahead of the collapsed
+	 * "other contexts" extras, so `.first()` is the in-context box.
+	 *
+	 * @param {'reader'|'author'|'reviewer'} role
+	 */
+	roleCheckbox(role) {
+		return this.form('roles').locator(`input[name^="${role}Group["]`).first();
+	}
+
+	/**
+	 * Add a reviewing-interest tag via the tag-it widget and commit it with
+	 * Enter (the tagit "new" input carries no `name` until committed;
+	 * interestsInput.tpl posts the committed tags as `interests[]`).
+	 *
+	 * @param {string} text
+	 */
+	async addInterest(text) {
+		const input = this.page.locator('#interests .tagit-new input');
+		await input.click();
+		await input.fill(text);
+		await input.press('Enter');
+	}
+
+	/** The reviewing-interests widget (committed tags carry `.tagit-choice`). */
+	interestsWidget() {
+		return this.page.locator('#interests');
+	}
+
+	// ── Public profile tab ──────────────────────────────────────────────
+
+	/**
+	 * Upload a profile image through the plupload file input and wait for
+	 * the dedicated upload op (uncamelized `upload-profile-image`) to
+	 * return. The FileUploadFormHandler then re-renders the form in place
+	 * with the stored image + a Delete button — note this re-render CLEARS
+	 * any unsaved text fields (biography / URL), so upload separately from
+	 * text saves.
+	 *
+	 * @param {string} filePath absolute path to a ≤150×150 image
+	 */
+	async uploadProfileImage(filePath) {
+		const responsePromise = this.page.waitForResponse(
+			(r) => r.url().includes('/profile-tab/upload-profile-image'),
+			{timeout: 20_000},
+		);
+		await this.form('publicProfile')
+			.locator('input[type="file"]')
+			.setInputFiles(filePath);
+		const response = await responsePromise;
+		expect(
+			response.ok(),
+			`profile image upload returned ${response.status()}`,
+		).toBeTruthy();
+		await waitForJQueryIdle(this.page);
+	}
+
+	/** The rendered profile-image `<img>` (present once an image is stored). */
+	profileImage() {
+		return this.form('publicProfile').locator('img');
+	}
+
+	/**
 	 * The readonly API-key display input on the API Key tab. fbvElement
 	 * derives `name` from `id` ("apiKey") and names are NOT uniqid
 	 * suffixed, so the name selector is stable.
