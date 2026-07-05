@@ -1,6 +1,7 @@
 // @ts-check
 const {expect} = require('@playwright/test');
 const {BasePage} = require('./BasePage.js');
+const {waitForJQueryIdle} = require('../support/jquery.js');
 
 /**
  * Users & Roles → Users tab (/{contextPath}/management/settings/access).
@@ -156,5 +157,82 @@ exports.UserManagementPage = class UserManagementPage extends BasePage {
 	/** @param {number} n */
 	pageButton(n) {
 		return this.page.getByRole('button', {name: `Go to Page ${n}`});
+	}
+
+	/**
+	 * Is the Notify tab present? It renders only when the journal has
+	 * `enableBulkEmails` on (off by default → hidden). A `role="tab"`
+	 * whose accessible name is "Notify".
+	 */
+	get notifyTab() {
+		return this.page.getByRole('tab', {name: 'Notify'});
+	}
+
+	/**
+	 * Disable a user via the grid row action. Opens the legacy
+	 * `#userDisableForm` AjaxModal (a Vue side modal wrapping the jQuery
+	 * form), fills the free-text reason (a plain textarea — NOT rich) and
+	 * submits it via the default fbv "OK" button, then waits for the
+	 * AjaxFormHandler to close the modal + refresh the grid.
+	 *
+	 * @param {import('@playwright/test').Locator} row
+	 * @param {string} reason
+	 */
+	async disableUser(row, reason) {
+		await this.clickRowAction(row, 'Disable User');
+		await this.submitDisableForm(reason);
+	}
+
+	/**
+	 * Re-enable a previously-disabled user via the grid row action (the
+	 * menu item reads "Enable User" once disabled). Same legacy form; the
+	 * reason field is optional here.
+	 *
+	 * @param {import('@playwright/test').Locator} row
+	 * @param {string} [reason]
+	 */
+	async enableUser(row, reason = '') {
+		await this.clickRowAction(row, 'Enable User');
+		await this.submitDisableForm(reason);
+	}
+
+	/**
+	 * Fill + submit the shared enable/disable legacy form.
+	 *
+	 * @param {string} reason
+	 */
+	async submitDisableForm(reason) {
+		const form = this.page.locator('form#userDisableForm');
+		await expect(form).toBeVisible({timeout: 15_000});
+		if (reason) {
+			// fbvElement ids are runtime-suffixed ($FBV_uniqId); the `name`
+			// is stable (patterns.md pitfall 8).
+			await form.locator('textarea[name="disableReason"]').fill(reason);
+		}
+		await form.getByRole('button', {name: 'OK', exact: true}).click();
+		await waitForJQueryIdle(this.page);
+		await expect(form).toBeHidden({timeout: 15_000});
+	}
+
+	/**
+	 * Remove a user from the journal (ends ALL their active roles here)
+	 * via the grid Remove action. Opens the reka-ui confirm dialog and
+	 * confirms it, waiting on the resulting `remove-user` POST rather than
+	 * a toast (parallel-safe).
+	 *
+	 * @param {import('@playwright/test').Locator} row
+	 */
+	async removeUserFromJournal(row) {
+		await this.clickRowAction(row, 'Remove User');
+		const ok = this.page.getByRole('button', {name: 'OK', exact: true});
+		await expect(ok).toBeVisible({timeout: 10_000});
+		const removed = this.page.waitForResponse(
+			(r) =>
+				r.url().includes('/user-grid/remove-user') &&
+				r.request().method() === 'POST',
+		);
+		await ok.click();
+		await removed;
+		await waitForJQueryIdle(this.page);
 	}
 };
