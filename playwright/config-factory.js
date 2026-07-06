@@ -206,6 +206,17 @@ module.exports = function createPlaywrightConfig({app}) {
 			{
 				name: app,
 				dependencies: ['setup'],
+				// retries: 1 — under 5-worker parallel load a handful of
+				// specs occasionally flake on environmental races (dev-server
+				// JSON-truncation, seq-ordering, media web/high-res linking);
+				// each passes deterministically in isolation. One retry
+				// absorbs the transient failure without masking a real
+				// regression (a genuine bug fails both attempts). Added after
+				// the third distinct flake surface was observed (see
+				// PROGRESS.md watch-item). The serial project deliberately
+				// keeps no retries — it runs single-worker and must stay
+				// deterministic.
+				retries: 1,
 				testMatch: [
 					'playwright/tests/**/*.spec.js',
 					'lib/pkp/playwright/tests/**/*.spec.js',
