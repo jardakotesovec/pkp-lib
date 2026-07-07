@@ -48,6 +48,8 @@ class OpenReviewComponent
             'openReview.reviewCount',
             'openReview.fullReview',
             'openReview.noCommentsAvailable',
+            'openReview.competingInterests',
+            'openReview.noCompetingInterests',
             'openReview.readReview',
             'openReview.hideReview',
             'openReview.readResponse',

@@ -129,11 +129,16 @@ class PKPReviewerReviewStep1Form extends ReviewerReviewForm
         $reviewSubmission = $this->getReviewSubmission();
 
         // Set competing interests.
-        if ($this->getData('competingInterestOption') == 'hasCompetingInterests') {
+        $competingInterestOption = $this->getData('competingInterestOption');
+        if ($competingInterestOption == 'hasCompetingInterests') {
             $reviewAssignment->setCompetingInterests($this->request->getUserVar('reviewerCompetingInterests'));
         } else {
             $reviewAssignment->setCompetingInterests(null);
         }
+        // The declaration options are only presented when the context has a
+        // competing interests policy, so a submitted option means the
+        // reviewer was asked and answered
+        $reviewAssignment->setCompetingInterestsDeclared((bool) $competingInterestOption);
 
         // Set review to next step.
         $this->updateReviewStepAndSaveSubmission($reviewAssignment);

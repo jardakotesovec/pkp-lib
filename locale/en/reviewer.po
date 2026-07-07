@@ -213,6 +213,12 @@ msgstr "Full Review"
 msgid "openReview.noCommentsAvailable"
 msgstr "No review comments available."
 
+msgid "openReview.competingInterests"
+msgstr "Competing Interests"
+
+msgid "openReview.noCompetingInterests"
+msgstr "No competing interests were disclosed."
+
 msgid "openReview.readReview"
 msgstr "Read Review"
 

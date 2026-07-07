@@ -35,6 +35,11 @@
 				"nullable"
 			]
 		},
+		"competingInterestsDeclared": {
+			"type": "boolean",
+			"description": "Whether the reviewer answered the competing interests declaration. False for reviews completed before the context enabled competing interests.",
+			"apiSummary": true
+		},
 		"considered": {
 			"type": "integer",
 			"description": "Whether editor considered a review assignment request",
