@@ -148,6 +148,58 @@ exports.ReviewerManagerPage = class ReviewerManagerPage extends BasePage {
 	}
 
 	/**
+	 * Pick a last-round reviewer via the per-item "Reassign {name}"
+	 * button (sr name from reviewer.list.reassign.withName; pinned on
+	 * round ≥ 2 for reviewers who completed a review in the previous
+	 * round) and wait for the assignment form. The
+	 * AdvancedReviewerSearchHandler swaps the personal message to the
+	 * REVIEW_REQUEST_SUBSEQUENT body for these reviewers.
+	 *
+	 * @param {import('@playwright/test').Locator} modal
+	 * @param {string} fullName e.g. 'Paul Hudson'
+	 * @returns {Promise<import('@playwright/test').Locator>} the
+	 *   #advancedSearchReviewerForm assignment form
+	 */
+	async reassignReviewer(modal, fullName) {
+		await modal
+			.getByRole('button', {name: `Reassign ${fullName}`, exact: true})
+			.first()
+			.click();
+		const regularForm = modal.locator('#regularReviewerForm').last();
+		await expect(regularForm).toBeVisible({timeout: 15_000});
+		await expect(regularForm.locator('#selectedReviewerName')).toContainText(
+			fullName,
+		);
+		return regularForm.locator('#advancedSearchReviewerForm');
+	}
+
+	/**
+	 * Open the Read Review modal from a row's primary "Read Review"
+	 * action (offered on submitted/viewed rows in the editorial view and
+	 * on completed open reviews in the author-redacted view). The
+	 * legacy readReview modal's accessible name is "Review: {submission
+	 * title}", so the dialog lookup anchors on the prefix. Resolves the
+	 * #readReviewForm (editor variant; the author variant has no form —
+	 * pass {expectForm: false}).
+	 *
+	 * @param {string} reviewerFullName
+	 * @param {{expectForm?: boolean}} [opts]
+	 * @returns {Promise<{modal: import('@playwright/test').Locator, form: import('@playwright/test').Locator|null}>}
+	 */
+	async openReadReview(reviewerFullName, {expectForm = true} = {}) {
+		await this.row(reviewerFullName)
+			.getByRole('button', {name: 'Read Review', exact: true})
+			.click();
+		const modal = this.page.getByRole('dialog', {name: /^Review:/});
+		await expect(modal).toBeVisible({timeout: 15_000});
+		if (!expectForm) {
+			return {modal, form: null};
+		}
+		const form = await this.legacyForm(modal, 'readReviewForm');
+		return {modal, form};
+	}
+
+	/**
 	 * From the Add Reviewer modal, switch to the Create New Reviewer
 	 * form (link action rendered in the search panel's button row).
 	 *

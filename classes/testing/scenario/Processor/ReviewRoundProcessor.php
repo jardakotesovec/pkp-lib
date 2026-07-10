@@ -113,6 +113,15 @@ class ReviewRoundProcessor
             'round' => $round,
             'dateAssigned' => $now,
             'dateNotified' => $now,
+            // Production parity: ReviewerForm::execute() stamps
+            // considered = REVIEW_ASSIGNMENT_NEW (0) on every assignment
+            // it creates. Leaving it NULL breaks the strict
+            // `getConsidered() === REVIEW_ASSIGNMENT_NEW` check in
+            // PKPReviewerGridHandler::readReview(), so an editor opening
+            // a seeded-then-submitted review would never flip it to
+            // REVIEW_ASSIGNMENT_VIEWED ("Review Viewed").
+            // statusFieldEdits() overwrites this for 'completed' rows.
+            'considered' => ReviewAssignment::REVIEW_ASSIGNMENT_NEW,
         ];
 
         // Always populate dateDue / dateResponseDue. The Add Reviewer
