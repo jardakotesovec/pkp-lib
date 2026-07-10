@@ -24,15 +24,15 @@ const {ActivityLogModal} = require('../pages/ActivityLogModal.js');
  *       locked in the picker, Unlock exposes Select, assign proceeds
  *   s4  create reviewer mid-assignment (registration + request mails);
  *       assistant's picker offers neither Create nor Enroll
- *   s5  round-2 pins last round's reviewer with "Reassign" and preloads
- *       the subsequent-request template
+ *   s5  round 2 lists round-1's reviewer first with a "Reassign" button;
+ *       reassigning presets the "Review Request Subsequent" email
  *   s6  unassign-before-answer deletes the row; cancel-after-accept
  *       keeps a Request Cancelled row; both email the reviewer
  *   s7  reinstate returns the cancelled-after-accept row to
  *       Request Accepted
  *   s8  decline → resend with fresh dates → Request Resent → editor
  *       logs the acceptance on the reviewer's behalf
- *   s9  read (flips to Review Viewed), set recommendation by proxy,
+ *   s9  read (row changes to Review Viewed), set recommendation by proxy,
  *       rate, confirm (Complete + by-proxy activity-log row), revert
  *       (back to Review Submitted)
  *   s10 thank from a Complete row → Reviewer Thanked + ack email
@@ -418,7 +418,7 @@ test.describe('assign and manage reviewers', () => {
 		).toHaveCount(0);
 	});
 
-	test('s5: round two pins last round\'s reviewer with Reassign and preloads the subsequent-request template', async ({
+	test('s5: round two lists last round\'s reviewer first with Reassign, presetting the Review Request Subsequent email', async ({
 		page,
 		pkpApi,
 		pkpMail,
