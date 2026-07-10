@@ -53,20 +53,20 @@ const {ActivityLogModal} = require('../pages/ActivityLogModal.js');
  * roles).
  */
 
-test.use({user: 'dbarnes'});
+test.use({user: 'editor.diana'});
 
 const JOURNAL = 'publicknowledge';
 
 // Seeded users this spec touches: display names (row lookups) +
 // mailinator addresses (Mailpit scoping).
 const USER = {
-	dbarnes: {name: 'Daniel Barnes', email: 'dbarnes@mailinator.com'},
-	dbuskins: {name: 'David Buskins', email: 'dbuskins@mailinator.com'},
-	jjanssen: {name: 'Julie Janssen', email: 'jjanssen@mailinator.com'},
-	phudson: {name: 'Paul Hudson', email: 'phudson@mailinator.com'},
-	amccrae: {name: 'Aisla McCrae', email: 'amccrae@mailinator.com'},
-	agallego: {name: 'Adela Gallego', email: 'agallego@mailinator.com'},
-	atester: {name: 'Author Tester', email: 'atester@mailinator.com'},
+	diana: {name: 'Diana Editor', email: 'editor.diana@mailinator.com'},
+	ana: {name: 'Ana SectionEditor', email: 'sectioneditor.ana@mailinator.com'},
+	julia: {name: 'Julia Reviewer', email: 'reviewer.julia@mailinator.com'},
+	paul: {name: 'Paul Reviewer', email: 'reviewer.paul@mailinator.com'},
+	amara: {name: 'Amara Reviewer', email: 'reviewer.amara@mailinator.com'},
+	adam: {name: 'Adam Reviewer', email: 'reviewer.adam@mailinator.com'},
+	alex: {name: 'Alex Author', email: 'author.alex@mailinator.com'},
 };
 
 /** A unique, hyphenless, alphanumeric tag (parallel isolation + mail scoping). */
@@ -103,7 +103,7 @@ function isoDate(days = 0) {
 function inReviewSpec({
 	tag,
 	reviewers = [],
-	submitter = 'rvaca',
+	submitter = 'manager.maya',
 	journal = JOURNAL,
 	participants,
 	decisions,
@@ -115,8 +115,8 @@ function inReviewSpec({
 		submitter,
 		section: 'ART',
 		locale: 'en',
-		participants: participants ?? [{user: 'dbarnes', role: 'editor'}],
-		decisions: decisions ?? [{type: 'sendExternalReview', by: 'dbarnes'}],
+		participants: participants ?? [{user: 'editor.diana', role: 'editor'}],
+		decisions: decisions ?? [{type: 'sendExternalReview', by: 'editor.diana'}],
 		reviewRounds: reviewRounds ?? [{reviewers}],
 		publications: [
 			{
@@ -191,34 +191,34 @@ test.describe('assign and manage reviewers', () => {
 			inReviewSpec({
 				tag,
 				participants: [
-					{user: 'dbarnes', role: 'editor'},
-					{user: 'dbuskins', role: 'sectionEditor'},
+					{user: 'editor.diana', role: 'editor'},
+					{user: 'sectioneditor.ana', role: 'sectionEditor'},
 				],
 			}),
 		);
 
-		const edCtx = await asUser('dbuskins');
+		const edCtx = await asUser('sectioneditor.ana');
 		const edPage = await edCtx.newPage();
 		const rm = new ReviewerManagerPage(edPage);
 		await rm.gotoWorkflow(submission.id);
 
 		await assignFromPool(rm, {
-			searchToken: 'McCrae',
-			fullName: USER.amccrae.name,
+			searchToken: 'Amara',
+			fullName: USER.amara.name,
 			tag,
 		});
 
-		await expect(rm.row(USER.amccrae.name)).toContainText('Request Sent');
+		await expect(rm.row(USER.amara.name)).toContainText('Request Sent');
 
 		// Invitation email, scoped by recipient + the tagged title.
 		await pkpMail.find({
-			to: USER.amccrae.email,
+			to: USER.amara.email,
 			contains: tag,
 			subject: 'Invitation to review',
 		});
 
 		// In-app task notification for the reviewer.
-		await expectReviewTaskNotification(asUser, 'amccrae', tag);
+		await expectReviewTaskNotification(asUser, 'reviewer.amara', tag);
 	});
 
 	test('s2: skip the email — row and task notification still fire, no invitation email', async ({
@@ -235,29 +235,29 @@ test.describe('assign and manage reviewers', () => {
 
 		// The assignment whose email is skipped.
 		await assignFromPool(rm, {
-			searchToken: 'Gallego',
-			fullName: USER.agallego.name,
+			searchToken: 'Adam',
+			fullName: USER.adam.name,
 			tag,
 			skipEmail: true,
 		});
-		await expect(rm.row(USER.agallego.name)).toContainText('Request Sent');
+		await expect(rm.row(USER.adam.name)).toContainText('Request Sent');
 
 		// The in-app notification is unconditional (rule 5).
-		await expectReviewTaskNotification(asUser, 'agallego', tag);
+		await expectReviewTaskNotification(asUser, 'reviewer.adam', tag);
 
 		// Positive control: a second assignment WITH email, sent after the
 		// skipped one, bounds the negative wait.
 		await assignFromPool(rm, {
-			searchToken: 'Janssen',
-			fullName: USER.jjanssen.name,
+			searchToken: 'Julia',
+			fullName: USER.julia.name,
 			tag,
 		});
-		await expect(rm.row(USER.jjanssen.name)).toContainText('Request Sent');
+		await expect(rm.row(USER.julia.name)).toContainText('Request Sent');
 
 		await pkpMail.expectNone({
-			to: USER.agallego.email,
+			to: USER.adam.email,
 			contains: tag,
-			afterControl: {to: USER.jjanssen.email, contains: tag},
+			afterControl: {to: USER.julia.email, contains: tag},
 		});
 	});
 
@@ -266,42 +266,42 @@ test.describe('assign and manage reviewers', () => {
 		pkpApi,
 	}) => {
 		const tag = uniqueTag();
-		// agallego (a seeded reviewer) submits — as a stage-assigned user
+		// reviewer.adam (a seeded reviewer) submits — as a stage-assigned user
 		// they land on the picker's warn list (users who could know the
 		// author identities).
 		const {submission} = await pkpApi.createSubmission(
-			inReviewSpec({tag, submitter: 'agallego'}),
+			inReviewSpec({tag, submitter: 'reviewer.adam'}),
 		);
 
 		const rm = new ReviewerManagerPage(page);
 		await rm.gotoWorkflow(submission.id);
 
 		const modal = await rm.openAddReviewerModal();
-		await rm.searchSelectPanel(modal, 'Gallego');
+		await rm.searchSelectPanel(modal, 'Adam');
 
 		const item = rm
 			.selectPanel(modal)
 			.locator('.listPanel__item')
-			.filter({hasText: USER.agallego.name})
+			.filter({hasText: USER.adam.name})
 			.first();
 		await expect(item.getByText(/This reviewer is locked/)).toBeVisible({
 			timeout: 15_000,
 		});
 		await expect(
 			modal.getByRole('button', {
-				name: `Select ${USER.agallego.name}`,
+				name: `Select ${USER.adam.name}`,
 				exact: true,
 			}),
 		).toBeHidden();
 
 		await item.getByRole('button', {name: 'Unlock', exact: true}).click();
 
-		const form = await rm.selectReviewer(modal, USER.agallego.name);
+		const form = await rm.selectReviewer(modal, USER.adam.name);
 		await rm.ensureDueDatesOrdered(form);
 		await rm.awaitRichTextContains(form, 'personalMessage', tag);
 		await rm.submitLegacyForm(form, 'Add Reviewer', modal);
 
-		await expect(rm.row(USER.agallego.name)).toContainText('Request Sent');
+		await expect(rm.row(USER.adam.name)).toContainText('Request Sent');
 	});
 
 	test('s4: create a reviewer mid-assignment; an assistant sees neither Create nor Enroll', async ({
@@ -428,15 +428,15 @@ test.describe('assign and manage reviewers', () => {
 			inReviewSpec({
 				tag,
 				decisions: [
-					{type: 'sendExternalReview', by: 'dbarnes'},
-					{type: 'requestRevisions', by: 'dbarnes'},
-					{type: 'newExternalRound', by: 'dbarnes'},
+					{type: 'sendExternalReview', by: 'editor.diana'},
+					{type: 'requestRevisions', by: 'editor.diana'},
+					{type: 'newExternalRound', by: 'editor.diana'},
 				],
 				reviewRounds: [
 					{
 						reviewers: [
 							{
-								user: 'phudson',
+								user: 'reviewer.paul',
 								method: 'anonymous',
 								status: 'completed',
 								recommendation: 'pendingRevisions',
@@ -453,7 +453,7 @@ test.describe('assign and manage reviewers', () => {
 
 		const modal = await rm.openAddReviewerModal();
 		// The round-1 reviewer is pinned with a Reassign action.
-		const form = await rm.reassignReviewer(modal, USER.phudson.name);
+		const form = await rm.reassignReviewer(modal, USER.paul.name);
 		// The subsequent-round request template is preloaded.
 		await rm.awaitRichTextContains(
 			form,
@@ -463,9 +463,9 @@ test.describe('assign and manage reviewers', () => {
 		await rm.ensureDueDatesOrdered(form);
 		await rm.submitLegacyForm(form, 'Add Reviewer', modal);
 
-		await expect(rm.row(USER.phudson.name)).toContainText('Request Sent');
+		await expect(rm.row(USER.paul.name)).toContainText('Request Sent');
 		await pkpMail.find({
-			to: USER.phudson.email,
+			to: USER.paul.email,
 			contains: tag,
 			subject: 'Request to review a revised submission',
 		});
@@ -481,8 +481,8 @@ test.describe('assign and manage reviewers', () => {
 			inReviewSpec({
 				tag,
 				reviewers: [
-					{user: 'phudson', method: 'anonymous', status: 'invited'},
-					{user: 'jjanssen', method: 'anonymous', status: 'accepted'},
+					{user: 'reviewer.paul', method: 'anonymous', status: 'invited'},
+					{user: 'reviewer.julia', method: 'anonymous', status: 'accepted'},
 				],
 			}),
 		);
@@ -492,35 +492,35 @@ test.describe('assign and manage reviewers', () => {
 
 		// Invited row → "Unassign Reviewer" → the row disappears outright.
 		const unassignModal = await rm.openRowAction(
-			USER.phudson.name,
+			USER.paul.name,
 			'Unassign Reviewer',
 			'Unassign Reviewer',
 		);
 		const unassignForm = await rm.legacyForm(unassignModal, 'unassignReviewerForm');
 		await rm.awaitRichTextContains(unassignForm, 'personalMessage', tag);
 		await rm.submitLegacyForm(unassignForm, 'Unassign Reviewer', unassignModal);
-		await expect(rm.row(USER.phudson.name)).toBeHidden();
+		await expect(rm.row(USER.paul.name)).toBeHidden();
 
 		// Accepted row → the same op is labelled "Cancel Reviewer" and the
 		// row survives as Request Cancelled.
 		const cancelModal = await rm.openRowAction(
-			USER.jjanssen.name,
+			USER.julia.name,
 			'Cancel Reviewer',
 			'Cancel Reviewer',
 		);
 		const cancelForm = await rm.legacyForm(cancelModal, 'unassignReviewerForm');
 		await rm.awaitRichTextContains(cancelForm, 'personalMessage', tag);
 		await rm.submitLegacyForm(cancelForm, 'Cancel Reviewer', cancelModal);
-		await expect(rm.row(USER.jjanssen.name)).toContainText('Request Cancelled');
+		await expect(rm.row(USER.julia.name)).toContainText('Request Cancelled');
 
 		// Both reviewers got the cancellation notice.
 		await pkpMail.find({
-			to: USER.phudson.email,
+			to: USER.paul.email,
 			contains: tag,
 			subject: 'Request for Review Cancelled',
 		});
 		await pkpMail.find({
-			to: USER.jjanssen.email,
+			to: USER.julia.email,
 			contains: tag,
 			subject: 'Request for Review Cancelled',
 		});
@@ -536,17 +536,17 @@ test.describe('assign and manage reviewers', () => {
 		const {submission} = await pkpApi.createSubmission(
 			inReviewSpec({
 				tag,
-				reviewers: [{user: 'jjanssen', method: 'anonymous', status: 'cancelled'}],
+				reviewers: [{user: 'reviewer.julia', method: 'anonymous', status: 'cancelled'}],
 			}),
 		);
 
 		const rm = new ReviewerManagerPage(page);
 		await rm.gotoWorkflow(submission.id);
-		await expect(rm.row(USER.jjanssen.name)).toContainText('Request Cancelled');
+		await expect(rm.row(USER.julia.name)).toContainText('Request Cancelled');
 
 		// Cancelled rows lose Edit and offer Reinstate (rule 3).
 		await rm
-			.row(USER.jjanssen.name)
+			.row(USER.julia.name)
 			.getByRole('button', {name: 'More Actions'})
 			.click();
 		await expect(
@@ -564,9 +564,9 @@ test.describe('assign and manage reviewers', () => {
 		await rm.awaitRichTextContains(form, 'personalMessage', tag);
 		await rm.submitLegacyForm(form, 'Reinstate Reviewer', modal);
 
-		await expect(rm.row(USER.jjanssen.name)).toContainText('Request Accepted');
+		await expect(rm.row(USER.julia.name)).toContainText('Request Accepted');
 		await pkpMail.find({
-			to: USER.jjanssen.email,
+			to: USER.julia.email,
 			contains: tag,
 			subject: 'Can you still review',
 		});
@@ -581,16 +581,16 @@ test.describe('assign and manage reviewers', () => {
 		const {submission} = await pkpApi.createSubmission(
 			inReviewSpec({
 				tag,
-				reviewers: [{user: 'phudson', method: 'anonymous', status: 'declined'}],
+				reviewers: [{user: 'reviewer.paul', method: 'anonymous', status: 'declined'}],
 			}),
 		);
 
 		const rm = new ReviewerManagerPage(page);
 		await rm.gotoWorkflow(submission.id);
-		await expect(rm.row(USER.phudson.name)).toContainText('Request Declined');
+		await expect(rm.row(USER.paul.name)).toContainText('Request Declined');
 
 		const modal = await rm.openRowAction(
-			USER.phudson.name,
+			USER.paul.name,
 			'Resend Review Request',
 			'Resend Review Request',
 		);
@@ -600,9 +600,9 @@ test.describe('assign and manage reviewers', () => {
 		await rm.awaitRichTextContains(form, 'personalMessage', tag);
 		await rm.submitLegacyForm(form, 'Resend Review Request', modal);
 
-		await expect(rm.row(USER.phudson.name)).toContainText('Request Resent');
+		await expect(rm.row(USER.paul.name)).toContainText('Request Resent');
 		await pkpMail.find({
-			to: USER.phudson.email,
+			to: USER.paul.email,
 			contains: tag,
 			subject: 'Requesting your review again',
 		});
@@ -610,7 +610,7 @@ test.describe('assign and manage reviewers', () => {
 		// The decline is cleared, so Log Response is offered again — use it
 		// to record the acceptance on the reviewer's behalf (rule 10).
 		await rm
-			.row(USER.phudson.name)
+			.row(USER.paul.name)
 			.getByRole('button', {name: 'More Actions'})
 			.click();
 		await page.getByRole('menuitem', {name: 'Log Response', exact: true}).click();
@@ -627,7 +627,7 @@ test.describe('assign and manage reviewers', () => {
 			.click();
 		await expect(logModal).toBeHidden({timeout: 20_000});
 
-		await expect(rm.row(USER.phudson.name)).toContainText('Request Accepted');
+		await expect(rm.row(USER.paul.name)).toContainText('Request Accepted');
 	});
 
 	test('s9: read (Review Viewed), set recommendation by proxy, rate, confirm (Complete + log), revert (Review Submitted)', async ({
@@ -640,14 +640,14 @@ test.describe('assign and manage reviewers', () => {
 		const {submission} = await pkpApi.createSubmission(
 			inReviewSpec({
 				tag,
-				reviewers: [{user: 'jjanssen', method: 'anonymous', status: 'accepted'}],
+				reviewers: [{user: 'reviewer.julia', method: 'anonymous', status: 'accepted'}],
 			}),
 		);
 
 		// The reviewer genuinely submits through the wizard — the only way
 		// to a fresh (considered=NEW) submitted review, which is what makes
 		// the first editor open flip the row to Review Viewed.
-		const revCtx = await asUser('jjanssen');
+		const revCtx = await asUser('reviewer.julia');
 		const revPage = await revCtx.newPage();
 		const wizard = new ReviewerSubmissionPage(revPage);
 		await wizard.goto(submission.id);
@@ -662,10 +662,10 @@ test.describe('assign and manage reviewers', () => {
 
 		const rm = new ReviewerManagerPage(page);
 		await rm.gotoWorkflow(submission.id);
-		await expect(rm.row(USER.jjanssen.name)).toContainText('Review Submitted');
+		await expect(rm.row(USER.julia.name)).toContainText('Review Submitted');
 
 		// Merely opening the fresh review marks it Viewed (rule 11).
-		const first = await rm.openReadReview(USER.jjanssen.name);
+		const first = await rm.openReadReview(USER.julia.name);
 		await expect(
 			first.form.getByText(`Author-facing comments ${tag}`),
 		).toBeVisible();
@@ -681,11 +681,11 @@ test.describe('assign and manage reviewers', () => {
 			})
 			.toBe(12); // REVIEW_ASSIGNMENT_STATUS_VIEWED
 		await rm.gotoWorkflow(submission.id);
-		await expect(rm.row(USER.jjanssen.name)).toContainText('Review Viewed');
+		await expect(rm.row(USER.julia.name)).toContainText('Review Viewed');
 
 		// Re-open: adjust the recommendation on the reviewer's behalf,
 		// rate, confirm.
-		const second = await rm.openReadReview(USER.jjanssen.name);
+		const second = await rm.openReadReview(USER.julia.name);
 		await second.form
 			.locator('select#reviewerRecommendationId')
 			.last()
@@ -696,7 +696,7 @@ test.describe('assign and manage reviewers', () => {
 			.check();
 		await rm.submitLegacyForm(second.form, 'Confirm', second.modal);
 
-		const row = rm.row(USER.jjanssen.name);
+		const row = rm.row(USER.julia.name);
 		await expect(row).toContainText('Complete');
 		await expect(row).toContainText('Accept Submission');
 
@@ -711,13 +711,13 @@ test.describe('assign and manage reviewers', () => {
 
 		// Revert Decision drops the row back to Review Submitted (rule 13).
 		const revertDialog = await rm.clickRowPrimaryAction(
-			USER.jjanssen.name,
+			USER.julia.name,
 			'Revert Decision',
 			'Unconsider this Review',
 		);
 		await revertDialog.getByRole('button', {name: 'OK', exact: true}).click();
 		await expect(revertDialog).toBeHidden({timeout: 15_000});
-		await expect(rm.row(USER.jjanssen.name)).toContainText('Review Submitted');
+		await expect(rm.row(USER.julia.name)).toContainText('Review Submitted');
 	});
 
 	test('s10: thanking the reviewer sends the acknowledgement and moves the row to Reviewer Thanked', async ({
@@ -732,7 +732,7 @@ test.describe('assign and manage reviewers', () => {
 				tag,
 				reviewers: [
 					{
-						user: 'jjanssen',
+						user: 'reviewer.julia',
 						method: 'anonymous',
 						status: 'completed',
 						recommendation: 'accept',
@@ -743,10 +743,10 @@ test.describe('assign and manage reviewers', () => {
 
 		const rm = new ReviewerManagerPage(page);
 		await rm.gotoWorkflow(submission.id);
-		await expect(rm.row(USER.jjanssen.name)).toContainText('Complete');
+		await expect(rm.row(USER.julia.name)).toContainText('Complete');
 
 		const modal = await rm.clickRowPrimaryAction(
-			USER.jjanssen.name,
+			USER.julia.name,
 			'Thank Reviewer',
 			'Thank Reviewer',
 		);
@@ -754,9 +754,9 @@ test.describe('assign and manage reviewers', () => {
 		await rm.awaitRichTextContains(form, 'message', tag);
 		await rm.submitLegacyForm(form, 'Thank Reviewer', modal);
 
-		await expect(rm.row(USER.jjanssen.name)).toContainText('Reviewer Thanked');
+		await expect(rm.row(USER.julia.name)).toContainText('Reviewer Thanked');
 		await pkpMail.find({
-			to: USER.jjanssen.email,
+			to: USER.julia.email,
 			contains: tag,
 			subject: 'Thank you for your review',
 		});
@@ -772,7 +772,7 @@ test.describe('assign and manage reviewers', () => {
 		const {submission} = await pkpApi.createSubmission(
 			inReviewSpec({
 				tag,
-				reviewers: [{user: 'agallego', method: 'anonymous', status: 'accepted'}],
+				reviewers: [{user: 'reviewer.adam', method: 'anonymous', status: 'accepted'}],
 			}),
 		);
 
@@ -780,13 +780,13 @@ test.describe('assign and manage reviewers', () => {
 		await rm.gotoWorkflow(submission.id);
 
 		const newDue = isoDate(42);
-		const {modal, form} = await rm.openEditReviewModal(USER.agallego.name);
+		const {modal, form} = await rm.openEditReviewModal(USER.adam.name);
 		await rm.setDatepickerDate(form, 'reviewDueDate', newDue);
 		await rm.submitLegacyForm(form, 'OK', modal);
 
 		// The row keeps rendering the review due date; the persisted
 		// assignment carries the new date.
-		await expect(rm.row(USER.agallego.name)).toContainText('Review due:');
+		await expect(rm.row(USER.adam.name)).toContainText('Review due:');
 		await expect
 			.poll(async () => {
 				const assignments = await rm.fetchReviewAssignments(submission.id);
@@ -795,11 +795,11 @@ test.describe('assign and manage reviewers', () => {
 			.toContain(newDue);
 
 		await pkpMail.find({
-			to: USER.agallego.email,
+			to: USER.adam.email,
 			contains: tag,
 			subject: 'Your review assignment has been changed',
 		});
-		await expectReviewTaskNotification(asUser, 'agallego', tag, {
+		await expectReviewTaskNotification(asUser, 'reviewer.adam', tag, {
 			messageText: 'Review assignment updated.',
 		});
 	});
@@ -815,7 +815,7 @@ test.describe('assign and manage reviewers', () => {
 				tag,
 				reviewers: [
 					{
-						user: 'jjanssen',
+						user: 'reviewer.julia',
 						method: 'anonymous',
 						status: 'accepted',
 						reviewDueDate: isoDate(-5),
@@ -826,10 +826,10 @@ test.describe('assign and manage reviewers', () => {
 
 		const rm = new ReviewerManagerPage(page);
 		await rm.gotoWorkflow(submission.id);
-		await expect(rm.row(USER.jjanssen.name)).toContainText('Overdue');
+		await expect(rm.row(USER.julia.name)).toContainText('Overdue');
 
 		const modal = await rm.clickRowPrimaryAction(
-			USER.jjanssen.name,
+			USER.julia.name,
 			'Send Reminder',
 			'Review Reminder',
 		);
@@ -838,14 +838,14 @@ test.describe('assign and manage reviewers', () => {
 		await rm.submitLegacyForm(form, 'Send Reminder', modal);
 
 		await pkpMail.find({
-			to: USER.jjanssen.email,
+			to: USER.julia.email,
 			contains: tag,
 			subject: 'A reminder to please complete your review',
 		});
 
 		// History shows the reminded milestone.
 		const historyModal = await rm.openRowAction(
-			USER.jjanssen.name,
+			USER.julia.name,
 			'History',
 			'History',
 		);
@@ -865,11 +865,11 @@ test.describe('assign and manage reviewers', () => {
 		const {submission: subA} = await pkpApi.createSubmission(
 			inReviewSpec({
 				tag: `${tag}a`,
-				submitter: 'atester',
+				submitter: 'author.alex',
 				reviewers: [
-					{user: 'jjanssen', method: 'open', status: 'accepted'},
+					{user: 'reviewer.julia', method: 'open', status: 'accepted'},
 					{
-						user: 'phudson',
+						user: 'reviewer.paul',
 						method: 'doubleAnonymous',
 						status: 'completed',
 						recommendation: 'accept',
@@ -882,17 +882,17 @@ test.describe('assign and manage reviewers', () => {
 		const {submission: subB} = await pkpApi.createSubmission(
 			inReviewSpec({
 				tag: `${tag}b`,
-				submitter: 'atester',
+				submitter: 'author.alex',
 				reviewers: [
 					{
-						user: 'jjanssen',
+						user: 'reviewer.julia',
 						method: 'open',
 						status: 'completed',
 						recommendation: 'accept',
 						comments: {toAuthor: `<p>Open review comments ${tag}</p>`},
 					},
 					{
-						user: 'phudson',
+						user: 'reviewer.paul',
 						method: 'doubleAnonymous',
 						status: 'completed',
 						recommendation: 'accept',
@@ -901,7 +901,7 @@ test.describe('assign and manage reviewers', () => {
 			}),
 		);
 
-		const authorCtx = await asUser('atester');
+		const authorCtx = await asUser('author.alex');
 		const authorPage = await authorCtx.newPage();
 		const rm = new ReviewerManagerPage(authorPage);
 
@@ -919,16 +919,16 @@ test.describe('assign and manage reviewers', () => {
 		// B — the redacted panel: the open reviewer with type + Read
 		// Review; no anonymous reviewer, no Add Reviewer, no statuses.
 		await rm.gotoAuthorWorkflow(subB.id);
-		const row = rm.row(USER.jjanssen.name);
+		const row = rm.row(USER.julia.name);
 		await expect(row).toBeVisible();
-		await expect(rm.reviewTypeLabel(USER.jjanssen.name, 'Open')).toBeVisible();
-		await expect(rm.manager.getByText(USER.phudson.name)).toBeHidden();
+		await expect(rm.reviewTypeLabel(USER.julia.name, 'Open')).toBeVisible();
+		await expect(rm.manager.getByText(USER.paul.name)).toBeHidden();
 		await expect(
 			rm.manager.getByRole('button', {name: 'Add Reviewer', exact: true}),
 		).toBeHidden();
 		await expect(rm.manager.getByText('Complete', {exact: true})).toBeHidden();
 
-		const {modal} = await rm.openReadReview(USER.jjanssen.name, {
+		const {modal} = await rm.openReadReview(USER.julia.name, {
 			expectForm: false,
 		});
 		await expect(modal.getByText(`Open review comments ${tag}`)).toBeVisible({

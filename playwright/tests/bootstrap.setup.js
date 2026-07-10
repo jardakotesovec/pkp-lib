@@ -18,7 +18,7 @@ const execFileAsync = promisify(execFile);
  *
  * Auth is handled on-demand by the `storageState` fixture in
  * support/base-test.js (see support/auth.js::ensureAuthStateFor): each
- * spec that declares `test.use({user: 'dbarnes'})` triggers a login for
+ * spec that declares `test.use({user: 'editor.diana'})` triggers a login for
  * that user on first use and caches the result in playwright/.auth/.
  * That avoids the ~16s upfront cost of logging in every baseline user
  * regardless of whether any spec actually needs them.

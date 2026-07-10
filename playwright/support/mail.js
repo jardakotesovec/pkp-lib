@@ -14,7 +14,7 @@
  *   test('something', async ({page, pkpMail}) => {
  *     // ...UI action that sends mail tagged with the scenario tag...
  *     const [message] = await pkpMail.find({
- *       to: 'dbarnes@mailinator.com',
+ *       to: 'editor.diana@mailinator.com',
  *       contains: tag,
  *     });
  *     expect(message.Subject).toContain('Password Reset');

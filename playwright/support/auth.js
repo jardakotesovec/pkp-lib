@@ -17,7 +17,7 @@ const AUTH_DIR = 'playwright/.auth';
  * confirms the cached cookies still authenticate.
  *
  * Used by the shared `storageState` fixture in support/base-test.js so
- * specs can just declare `test.use({user: 'dbarnes'})` and get a
+ * specs can just declare `test.use({user: 'editor.diana'})` and get a
  * pre-authenticated context on demand, without any upfront bootstrap
  * cost for users they don't touch.
  *

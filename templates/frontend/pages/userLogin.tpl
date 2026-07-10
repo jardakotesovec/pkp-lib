@@ -62,7 +62,7 @@
 							{translate key="common.required"}
 						</span>
 					</span>
-					<input type="password" name="password" id="password" value="{$password|default:""|escape}" password="true" maxlength="32" required aria-required="true" autocomplete="current-password">
+					<input type="password" name="password" id="password" value="{$password|default:""|escape}" password="true" maxlength="255" required aria-required="true" autocomplete="current-password">
 					<a href="{url page="login" op="lostPassword"}">
 						{translate key="user.login.forgotPassword"}
 					</a>

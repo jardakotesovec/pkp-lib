@@ -25,7 +25,7 @@ const {ensureAuthStateFor} = require('./auth.js');
  *                  `fullMessage(id)`. Scenario-seeding mail does NOT
  *                  reach Mailpit — Mail::fake() in the scenario
  *                  controllers discards it.
- *   user         — option fixture; specs declare `test.use({user: 'dbarnes'})`.
+ *   user         — option fixture; specs declare `test.use({user: 'editor.diana'})`.
  *                  Omit or set to undefined for an anonymous context.
  *   storageState — overrides Playwright's built-in fixture. Looks up the
  *                  current `user`, lazily logs them in via auth.js on
