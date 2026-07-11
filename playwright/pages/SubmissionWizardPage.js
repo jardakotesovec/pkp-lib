@@ -680,6 +680,176 @@ exports.SubmissionWizardPage = class SubmissionWizardPage extends BasePage {
 	}
 
 	/**
+	 * The Reviewer Suggestions step's list panel
+	 * (ReviewerSuggestionsListPanel.vue). Present only when the journal's
+	 * reviewerSuggestionEnabled dial is on.
+	 */
+	reviewerSuggestionsPanel() {
+		return this.page.locator('.listPanel--reviewerSuggestions');
+	}
+
+	/**
+	 * A saved suggestion's row in the step's list panel (name +
+	 * affiliation badge, email subtitle, Edit/Delete buttons).
+	 *
+	 * @param {string} fullName
+	 */
+	suggestionItem(fullName) {
+		return this.reviewerSuggestionsPanel()
+			.locator('.listPanel__item')
+			.filter({hasText: fullName})
+			.first();
+	}
+
+	/**
+	 * Open the "Add Reviewer Suggestion" side modal from the step's list
+	 * panel and wait for the form to mount (anchored on the Email input —
+	 * the side-modal wrapper reports visibility:hidden during the open
+	 * transition).
+	 *
+	 * @returns {Promise<import('@playwright/test').Locator>} the modal
+	 */
+	async openAddSuggestionModal() {
+		await this.reviewerSuggestionsPanel()
+			.getByRole('button', {name: 'Add Reviewer Suggestion', exact: true})
+			.click();
+		const modal = this.page.getByRole('dialog', {
+			name: 'Add Reviewer Suggestion',
+		});
+		await expect(
+			modal.locator('#reviewerSuggestions-email-control'),
+		).toBeVisible({timeout: 15_000});
+		return modal;
+	}
+
+	/**
+	 * Open a saved suggestion's Edit side modal (title "Edit") and wait
+	 * for the prefetched form to mount.
+	 *
+	 * @param {string} fullName
+	 * @returns {Promise<import('@playwright/test').Locator>} the modal
+	 */
+	async openEditSuggestionModal(fullName) {
+		await this.suggestionItem(fullName)
+			.getByRole('button', {name: 'Edit', exact: true})
+			.click();
+		const modal = this.page.getByRole('dialog', {name: 'Edit'});
+		await expect(
+			modal.locator('#reviewerSuggestions-email-control'),
+		).toBeVisible({timeout: 15_000});
+		return modal;
+	}
+
+	/**
+	 * A ReviewerSuggestionsForm field's control by name. Multilingual
+	 * fields (givenName, familyName, affiliation, suggestionReason)
+	 * carry a locale suffix; email/orcidId don't (pass locale=null).
+	 *
+	 * @param {string} field
+	 * @param {string|null} [locale='en']
+	 */
+	suggestionFieldControl(field, locale = 'en') {
+		const suffix = locale ? `-${locale}` : '';
+		return this.page.locator(
+			`#reviewerSuggestions-${field}-control${suffix}`,
+		);
+	}
+
+	/**
+	 * The "This field is required." error attached to a
+	 * ReviewerSuggestionsForm field, scoped via the field's wrapper.
+	 *
+	 * @param {string} field
+	 * @param {string|null} [locale='en']
+	 */
+	suggestionFieldError(field, locale = 'en') {
+		return this.page
+			.locator('.pkpFormField', {
+				has: this.suggestionFieldControl(field, locale),
+			})
+			.getByText('This field is required.');
+	}
+
+	/**
+	 * Fill the reviewer-suggestion form. Any omitted field is left
+	 * untouched (so the helper also serves the edit modal's partial
+	 * updates). The reason field is TinyMCE-backed.
+	 *
+	 * @param {Object} opts
+	 * @param {string} [opts.givenName]
+	 * @param {string} [opts.familyName]
+	 * @param {string} [opts.email]
+	 * @param {string} [opts.affiliation]
+	 * @param {string} [opts.reason]  HTML for "Reasons for suggesting reviewer"
+	 * @param {string} [opts.locale='en']
+	 */
+	async fillSuggestionForm({
+		givenName,
+		familyName,
+		email,
+		affiliation,
+		reason,
+		locale = 'en',
+	}) {
+		if (givenName !== undefined) {
+			await this.suggestionFieldControl('givenName', locale).fill(givenName);
+		}
+		if (familyName !== undefined) {
+			await this.suggestionFieldControl('familyName', locale).fill(familyName);
+		}
+		if (email !== undefined) {
+			await this.suggestionFieldControl('email', null).fill(email);
+		}
+		if (affiliation !== undefined) {
+			await this.suggestionFieldControl('affiliation', locale).fill(
+				affiliation,
+			);
+		}
+		if (reason !== undefined) {
+			await setTinyMceContent(
+				this.page,
+				`reviewerSuggestions-suggestionReason-control-${locale}`,
+				reason,
+			);
+		}
+	}
+
+	/**
+	 * Save the open suggestion form and wait for the modal to close
+	 * (the panel closes it on success; a still-open modal means
+	 * validation failed — assert errors instead of calling this).
+	 *
+	 * @param {import('@playwright/test').Locator} modal
+	 */
+	async saveSuggestionForm(modal) {
+		await modal.getByRole('button', {name: 'Save', exact: true}).click();
+		await expect(
+			modal.locator('#reviewerSuggestions-email-control'),
+		).toBeHidden({timeout: 15_000});
+	}
+
+	/**
+	 * Delete a saved suggestion through its confirmation dialog
+	 * ("Delete Reviewer Suggestion" / "Are you sure you want to remove
+	 * this suggestion? …") and wait for the row to leave the list.
+	 *
+	 * @param {string} fullName
+	 */
+	async deleteSuggestion(fullName) {
+		const item = this.suggestionItem(fullName);
+		await item.getByRole('button', {name: 'Delete', exact: true}).click();
+		const dialog = this.page
+			.locator('[data-cy="dialog"]')
+			.filter({hasText: 'Are you sure you want to remove this suggestion?'});
+		await expect(dialog).toBeVisible({timeout: 10_000});
+		await dialog
+			.getByRole('button', {name: 'Delete Reviewer Suggestion', exact: true})
+			.click();
+		await expect(dialog).toBeHidden({timeout: 15_000});
+		await expect(item).toHaveCount(0, {timeout: 15_000});
+	}
+
+	/**
 	 * Locator for one of the Review step's per-section panels, filtered
 	 * by its heading. Multilingual journals render Details / For the
 	 * Editors once per metadata locale — pass e.g. /^Details \(English\)/

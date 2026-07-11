@@ -32,6 +32,15 @@ exports.ReviewerManagerPage = class ReviewerManagerPage extends BasePage {
 	constructor(page) {
 		super(page);
 		this.manager = page.locator('[data-cy="reviewer-manager"]');
+		/**
+		 * The "Reviewers Suggested by Author" side panel
+		 * (ReviewerSuggestionManager.vue). Renders on the submission and
+		 * review stages when the journal's reviewerSuggestionEnabled dial
+		 * is on and the (stage-filtered) suggestion list is non-empty.
+		 */
+		this.suggestionManager = page.locator(
+			'[data-cy="reviewer-suggestion-manager"]',
+		);
 	}
 
 	/**
@@ -106,6 +115,97 @@ exports.ReviewerManagerPage = class ReviewerManagerPage extends BasePage {
 	 */
 	selectPanel(modal) {
 		return modal.locator('.listPanel--selectReviewer').last();
+	}
+
+	/**
+	 * A suggestion's row inside the "Reviewers Suggested by Author"
+	 * panel (one <li> per suggestion: avatar + name + affiliation +
+	 * rendered reason, plus the "…" actions menu on the active review
+	 * stage).
+	 *
+	 * @param {string} fullName the suggested person's full name
+	 */
+	suggestionRow(fullName) {
+		return this.suggestionManager
+			.locator('li')
+			.filter({hasText: fullName})
+			.first();
+	}
+
+	/**
+	 * Open the legacy Add Reviewer modal from a suggestion row's "…"
+	 * menu (DropdownActions labelled "{fullName} More Actions"; its
+	 * single item is "Add Reviewer" — reviewerSuggestionApprove). Only
+	 * available while the submission's current stage is the review
+	 * stage being viewed.
+	 *
+	 * @param {string} fullName the suggested person's full name
+	 * @returns {Promise<import('@playwright/test').Locator>} the modal
+	 */
+	async openSuggestionAddReviewer(fullName) {
+		await this.suggestionRow(fullName)
+			.getByRole('button', {name: `${fullName} More Actions`})
+			.click();
+		await this.page
+			.getByRole('menuitem', {name: 'Add Reviewer', exact: true})
+			.click();
+		return this.actionModal('Add Reviewer');
+	}
+
+	/**
+	 * The "Select a Reviewer from Reviewer Suggestions" block rendered
+	 * above the "Locate a Reviewer" search inside the Add Reviewer
+	 * modal. The block's stable hook is its shipped CSS class, typo
+	 * included ("reviewer-sugestions-list" — cosmetic quirk noted on
+	 * assign-and-manage-reviewers ledger row 52 / the
+	 * reviewer-suggestions spec).
+	 *
+	 * @param {import('@playwright/test').Locator} modal
+	 */
+	suggestionsBlock(modal) {
+		return modal.locator('.reviewer-sugestions-list');
+	}
+
+	/**
+	 * One suggestion's item inside the picker block (name, affiliation,
+	 * reason + the Select button).
+	 *
+	 * @param {import('@playwright/test').Locator} modal
+	 * @param {string} fullName
+	 */
+	suggestionBlockItem(modal, fullName) {
+		return this.suggestionsBlock(modal)
+			.locator('.listPanel__item--reviewer')
+			.filter({hasText: fullName})
+			.first();
+	}
+
+	/**
+	 * Click a picker-block suggestion's Select button. ⚠ The button's
+	 * accessible name is "Select undefined" (visible label "Select
+	 * Reviewer" is aria-hidden; the sr-only name interpolates an
+	 * undefined `fullName` — ledger row 52), so the click is anchored on
+	 * the item's single button instead of a name lookup.
+	 *
+	 * @param {import('@playwright/test').Locator} modal
+	 * @param {string} fullName
+	 */
+	async selectSuggestion(modal, fullName) {
+		await this.suggestionBlockItem(modal, fullName)
+			.getByRole('button')
+			.first()
+			.click();
+	}
+
+	/**
+	 * Close a side modal via its sr-labelled "Close" button and wait
+	 * for it to go.
+	 *
+	 * @param {import('@playwright/test').Locator} modal
+	 */
+	async closeModal(modal) {
+		await modal.getByRole('button', {name: 'Close', exact: true}).first().click();
+		await expect(modal).toBeHidden({timeout: 15_000});
 	}
 
 	/**
