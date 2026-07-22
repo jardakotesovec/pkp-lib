@@ -73,6 +73,22 @@ exports.ParticipantManagerPage = class ParticipantManagerPage extends BasePage {
 	}
 
 	/**
+	 * The list row for a participant matched by display name AND role
+	 * label — required when one person holds two assignments (e.g. a
+	 * Journal editor who is also a Section editor), which renders two
+	 * rows with the same name.
+	 *
+	 * @param {string} fullName
+	 * @param {string} roleName exact role label, e.g. 'Section editor'
+	 */
+	participantRowByRole(fullName, roleName) {
+		return this.panel
+			.locator('li')
+			.filter({hasText: fullName})
+			.filter({has: this.page.getByText(roleName, {exact: true})});
+	}
+
+	/**
 	 * The role label element inside a participant's row
 	 * (ParticipantManagerItemInfoRole renders the user-group name).
 	 *
@@ -132,6 +148,50 @@ exports.ParticipantManagerPage = class ParticipantManagerPage extends BasePage {
 	}
 
 	/**
+	 * Open the DropdownActions menu scoped to a specific row locator —
+	 * needed when the same person has two rows (two assignments) and the
+	 * page-wide accessible name "<fullName> More Actions" is ambiguous.
+	 *
+	 * @param {import('@playwright/test').Locator} row
+	 */
+	async openMoreActionsForRow(row) {
+		await row.getByRole('button', {name: /More Actions$/}).click();
+	}
+
+	/**
+	 * Open a row-scoped menu and click one of its items.
+	 *
+	 * @param {import('@playwright/test').Locator} row
+	 * @param {string} label
+	 */
+	async clickMenuItemForRow(row, label) {
+		await this.openMoreActionsForRow(row);
+		await this.menuItem(label).click();
+	}
+
+	/**
+	 * Open a participant's more-actions menu and assert which items it
+	 * offers / withholds, then close the menu again (Escape) so the
+	 * portal doesn't occlude follow-up interactions.
+	 *
+	 * @param {import('@playwright/test').Locator} row
+	 * @param {{present?: string[], absent?: string[]}} items
+	 */
+	async expectMenuForRow(row, {present = [], absent = []}) {
+		await this.openMoreActionsForRow(row);
+		for (const label of present) {
+			await expect(this.menuItem(label)).toBeVisible();
+		}
+		for (const label of absent) {
+			await expect(this.menuItem(label)).toHaveCount(0);
+		}
+		await this.page.keyboard.press('Escape');
+		await expect(
+			this.page.getByRole('menuitem').first(),
+		).toHaveCount(0, {timeout: 10_000});
+	}
+
+	/**
 	 * Click Assign and wait for the legacy add-participant form. Returns
 	 * the dialog + form locators for follow-up steps.
 	 *
@@ -160,6 +220,23 @@ exports.ParticipantManagerPage = class ParticipantManagerPage extends BasePage {
 	 */
 	async openEditAssignmentForm(fullName) {
 		await this.clickMenuItem(fullName, 'Edit');
+		return this.awaitEditAssignmentForm();
+	}
+
+	/**
+	 * Row-scoped variant of openEditAssignmentForm — for people with two
+	 * assignment rows.
+	 *
+	 * @param {import('@playwright/test').Locator} row
+	 * @returns {Promise<{modal: import('@playwright/test').Locator, form: import('@playwright/test').Locator}>}
+	 */
+	async openEditAssignmentFormForRow(row) {
+		await this.clickMenuItemForRow(row, 'Edit');
+		return this.awaitEditAssignmentForm();
+	}
+
+	/** Wait for the Edit Assignment dialog + legacy form to render. */
+	async awaitEditAssignmentForm() {
 		const modal = this.page.getByRole('dialog', {
 			name: 'Edit Assignment',
 			exact: true,
@@ -168,6 +245,55 @@ exports.ParticipantManagerPage = class ParticipantManagerPage extends BasePage {
 		const form = modal.locator('#addParticipantForm').last();
 		await expect(form).toBeVisible({timeout: 15_000});
 		return {modal, form};
+	}
+
+	/**
+	 * Dismiss an open assign/edit dialog via its Cancel control (the
+	 * fbvFormButtons cancel renders as an `<a href="#">`, not a button).
+	 *
+	 * @param {import('@playwright/test').Locator} modal
+	 */
+	async cancelAssignmentForm(modal) {
+		await modal.getByRole('link', {name: 'Cancel', exact: true}).click();
+		await expect(modal).toBeHidden({timeout: 15_000});
+	}
+
+	/**
+	 * Open the Notify dialog for a participant (row Notify action). The
+	 * dialog is titled "Notify" and hosts the legacy `#notifyForm`
+	 * (heading "Start Discussion", template picker, required Message).
+	 *
+	 * @param {string} fullName
+	 * @returns {Promise<{modal: import('@playwright/test').Locator, form: import('@playwright/test').Locator}>}
+	 */
+	async openNotifyForm(fullName) {
+		await this.clickMenuItem(fullName, 'Notify');
+		const modal = this.page.getByRole('dialog', {
+			name: 'Notify',
+			exact: true,
+		});
+		await expect(modal).toBeVisible({timeout: 15_000});
+		const form = modal.locator('#notifyForm').last();
+		await expect(form).toBeVisible({timeout: 15_000});
+		return {modal, form};
+	}
+
+	/**
+	 * Full Notify flow: open the dialog, optionally pick a predefined
+	 * message, set the (required) Message body, press "Notify" and wait
+	 * for the dialog to close.
+	 *
+	 * @param {string} fullName
+	 * @param {{template?: string, message: string}} opts
+	 */
+	async notifyParticipant(fullName, {template, message}) {
+		const {modal, form} = await this.openNotifyForm(fullName);
+		if (template) {
+			await this.selectNotifyTemplate(form, template);
+		}
+		await this.setNotifyMessage(form, message);
+		await modal.getByRole('button', {name: 'Notify', exact: true}).click();
+		await expect(modal).toBeHidden({timeout: 20_000});
 	}
 
 	/**
@@ -280,14 +406,29 @@ exports.ParticipantManagerPage = class ParticipantManagerPage extends BasePage {
 	 */
 	async removeParticipant(fullName) {
 		await this.clickMenuItem(fullName, 'Remove');
-		const confirm = this.page.locator('[data-cy="dialog"]').filter({
-			hasText: 'Remove Participant',
-		});
-		await expect(confirm).toBeVisible({timeout: 10_000});
+		const confirm = await this.awaitRemoveDialog();
 		await confirm.getByRole('button', {name: /^OK$/i}).click();
 		await expect(this.participantRow(fullName)).toHaveCount(0, {
 			timeout: 15_000,
 		});
+	}
+
+	/**
+	 * Wait for the Remove Participant confirmation and assert its
+	 * all-stages warning copy
+	 * (editor.submission.removeStageParticipant.description).
+	 *
+	 * @returns {Promise<import('@playwright/test').Locator>} the dialog
+	 */
+	async awaitRemoveDialog() {
+		const confirm = this.page.locator('[data-cy="dialog"]').filter({
+			hasText: 'Remove Participant',
+		});
+		await expect(confirm).toBeVisible({timeout: 10_000});
+		await expect(confirm).toContainText(
+			'You are about to remove this participant from all stages.',
+		);
+		return confirm;
 	}
 
 	/**
