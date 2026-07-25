@@ -29,6 +29,25 @@ const path = require('path');
 const {spawn} = require('child_process');
 const {seedTestConfig} = require('./seed-test-config.js');
 
+// Load the app's .env.playwright into process.env so a standalone
+// `npm run test:e2e:serve` produces a server with the SAME environment
+// Playwright's webServer gives it. Under Playwright this is a no-op —
+// config-factory.js has already called dotenv, and dotenv never
+// overwrites variables that are already set.
+//
+// This matters most for TEST_API_KEY: PKP\middleware\TestModeGate 404s
+// every /api/v1/_test/* route when the server process can't see it, so
+// a hand-started server would silently have no scenario API.
+try {
+	require('dotenv').config({
+		path: path.join(process.cwd(), '.env.playwright'),
+	});
+} catch {
+	// dotenv is a devDependency; if it isn't installed, fall back to
+	// whatever the caller exported. Nothing here is required for a
+	// plain page-serving run.
+}
+
 const port = parseInt(process.argv[2] ?? '', 10);
 if (!Number.isFinite(port) || port <= 0 || port > 65535) {
 	console.error(`Usage: node start-php-server.js <port>`);
