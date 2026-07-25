@@ -5,6 +5,37 @@ const {createMailClient} = require('./mail.js');
 const {ensureAuthStateFor} = require('./auth.js');
 
 /**
+ * First port of this app's PHP dev-server block — 8000 for OJS, 8100 for
+ * OMP, 8200 for OPS (set per app via the `basePort` parameter of
+ * lib/pkp/playwright/config-factory.js). Worker N talks to
+ * basePort + N.
+ *
+ * Two independent sources, checked in order, so the fixture can never
+ * disagree with the ports config-factory actually spawned:
+ *   1. PLAYWRIGHT_BASE_PORT — the factory writes the resolved value into
+ *      process.env, and every Playwright worker loads the config file
+ *      before running fixtures, so it's set in-process here.
+ *   2. The port of the project's configured baseURL (the factory sets it
+ *      to the first spawned port) — a fallback for worker runtimes that
+ *      might not re-evaluate the config.
+ * Falls back to 8000, the historical single-fleet default.
+ */
+function resolveBasePort(testInfo) {
+	const fromEnv = parseInt(process.env.PLAYWRIGHT_BASE_PORT ?? '', 10);
+	if (Number.isFinite(fromEnv) && fromEnv > 0 && fromEnv < 65536) {
+		return fromEnv;
+	}
+	const projectBaseURL = testInfo?.project?.use?.baseURL;
+	if (typeof projectBaseURL === 'string') {
+		const port = parseInt(new URL(projectBaseURL).port, 10);
+		if (Number.isFinite(port) && port > 0) {
+			return port;
+		}
+	}
+	return 8000;
+}
+
+/**
  * Shared extended `test` — every spec (shared or app-specific) ultimately
  * derives from here. OJS's playwright/support/fixtures.js layers OJS-only
  * fixtures on top; OMP/OPS do the same in their own repos.
@@ -12,9 +43,10 @@ const {ensureAuthStateFor} = require('./auth.js');
  * Fixtures provided:
  *   baseURL      — overrides Playwright's built-in fixture. Each parallel
  *                  worker gets its own dedicated PHP dev server on port
- *                  8000 + parallelIndex (see config-factory.js webServer
- *                  array). The default `use.baseURL` in the config still
- *                  points at port 8000 for the setup project + as a
+ *                  basePort + parallelIndex (see config-factory.js
+ *                  webServer array; basePort is 8000 for OJS, 8100 for
+ *                  OMP, 8200 for OPS). The default `use.baseURL` in the
+ *                  config still points at basePort for the setup project + as a
  *                  fallback. PLAYWRIGHT_BASE_URL env var, if set, takes
  *                  priority — useful when targeting an external server
  *                  (e.g. for debugging against a manually-started PHP).
@@ -40,8 +72,9 @@ const {ensureAuthStateFor} = require('./auth.js');
 exports.test = base.test.extend({
 	baseURL: async ({}, use, testInfo) => {
 		// Per-worker routing: each parallel worker gets its own PHP
-		// server on port 8000 + parallelIndex. The webServer array
-		// in config-factory.js spawns matching ports.
+		// server on port basePort + parallelIndex (see resolveBasePort
+		// above). The webServer array in config-factory.js spawns
+		// matching ports.
 		//
 		// Defensive: PLAYWRIGHT_BASE_URL was historically a documented
 		// knob in .env.playwright.example. It's been removed from the
@@ -56,8 +89,7 @@ exports.test = base.test.extend({
 			await use(envOverride);
 			return;
 		}
-		const port = 8000 + testInfo.parallelIndex;
-		await use(`http://127.0.0.1:${port}`);
+		await use(`http://127.0.0.1:${resolveBasePort(testInfo) + testInfo.parallelIndex}`);
 	},
 
 	pkpApi: async ({request, baseURL}, use) => {

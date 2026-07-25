@@ -11,10 +11,18 @@ const {defineConfig, devices} = require('@playwright/test');
  * logic lives here so the three apps never drift.
  *
  * Parameters:
- *   app — short app name; becomes the Playwright project name used on
- *         the CLI (e.g. `playwright test --project=ojs`).
+ *   app      — short app name; becomes the Playwright project name used
+ *              on the CLI (e.g. `playwright test --project=ojs`).
+ *   basePort — first TCP port of this app's PHP dev-server block
+ *              (default 8000). Worker N gets basePort + N, so each app
+ *              owns a 100-port block and the three fleets can run
+ *              side-by-side on one machine:
+ *                OJS 8000–8099 / OMP 8100–8199 / OPS 8200–8299.
+ *              Overridable at runtime with PLAYWRIGHT_BASE_PORT (env or
+ *              .env.playwright) — useful for a second checkout of the
+ *              same app, or to dodge a port already in use.
  */
-module.exports = function createPlaywrightConfig({app}) {
+module.exports = function createPlaywrightConfig({app, basePort = 8000}) {
 	const appRoot = process.cwd();
 	require('dotenv').config({path: path.join(appRoot, '.env.playwright')});
 	const isCI = !!process.env.CI;
@@ -33,7 +41,7 @@ module.exports = function createPlaywrightConfig({app}) {
 	// The chosen count drives both the Playwright `workers` setting AND
 	// the number of `php -S` instances spawned by `webServer` below.
 	// Each Playwright worker is paired 1:1 with a dedicated PHP server
-	// on a unique port (8000, 8001, 8002, …). This avoids the
+	// on a unique port (basePort, basePort+1, …). This avoids the
 	// PHP_CLI_SERVER_WORKERS env var which is Unix-only — Windows PHP
 	// ignores it, and the resulting single-process dev server deadlocks
 	// on same-origin sub-requests (page loads fetching their own /api).
@@ -58,10 +66,25 @@ module.exports = function createPlaywrightConfig({app}) {
 		if (isCI) return 3;
 		return Math.max(1, Math.ceil(os.cpus().length / 2));
 	})();
+	// Base-port resolution: PLAYWRIGHT_BASE_PORT (env / .env.playwright)
+	// wins over the app's compiled-in `basePort`, which defaults to 8000.
+	const resolvedBasePort = (() => {
+		const override = parseInt(process.env.PLAYWRIGHT_BASE_PORT ?? '', 10);
+		if (Number.isFinite(override) && override > 0 && override < 65536) {
+			return override;
+		}
+		return basePort;
+	})();
 	const phpPorts = Array.from(
 		{length: playwrightWorkers},
-		(_, i) => 8000 + i,
+		(_, i) => resolvedBasePort + i,
 	);
+	// Republish the resolved value so the per-worker `baseURL` fixture in
+	// support/base-test.js computes `basePort + parallelIndex` off the same
+	// number. Playwright worker processes re-require this config file
+	// before any fixture runs, so this assignment is in effect there too —
+	// no cross-process plumbing needed.
+	process.env.PLAYWRIGHT_BASE_PORT = String(resolvedBasePort);
 
 	return defineConfig({
 		testDir: appRoot,
@@ -93,7 +116,7 @@ module.exports = function createPlaywrightConfig({app}) {
 		// 60s timeout still catches genuine hangs.
 		expect: {timeout: 20_000},
 		use: {
-			// Default points at the first PHP server (port 8000) — used
+			// Default points at the first PHP server (the base port) — used
 			// by the setup project (which runs single-worker on
 			// parallelIndex=0) and as a fallback. The main project
 			// overrides this per-worker via the baseURL fixture in
@@ -123,7 +146,7 @@ module.exports = function createPlaywrightConfig({app}) {
 				: {reducedMotion: 'reduce'},
 		},
 		// One PHP dev server per Playwright worker, each on its own port
-		// starting at 8000. The 1:1 worker→server pairing — combined
+		// starting at `basePort`. The 1:1 worker→server pairing — combined
 		// with bumped expect/action timeouts above — replaces the
 		// historical single-server + PHP_CLI_SERVER_WORKERS approach,
 		// which was Unix-only (the env var is ignored on Windows
