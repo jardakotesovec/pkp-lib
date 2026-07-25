@@ -21,8 +21,29 @@ const {defineConfig, devices} = require('@playwright/test');
  *              Overridable at runtime with PLAYWRIGHT_BASE_PORT (env or
  *              .env.playwright) — useful for a second checkout of the
  *              same app, or to dodge a port already in use.
+ *   sharedTests — whether this app runs the SHARED feature specs in
+ *              lib/pkp/playwright/tests/*.spec.js (default true).
+ *              lib/pkp/playwright/tests/bootstrap.setup.js is always
+ *              collected; only the feature specs are gated.
+ *
+ *              The shared suite was written against OJS and is
+ *              OJS-flavoured below the payload level (section-keyed
+ *              scenario specs, the `scenarios/journal` alias, stage
+ *              labels, decision rosters — MULTIAPP-PLAN §5.6 and §7.3).
+ *              Until the "shared-test purge probe" has demoted what
+ *              doesn't generalize, an app that turns this on gets a wall
+ *              of failures that says nothing about the app. OMP and OPS
+ *              therefore start with `sharedTests: false` so a bare
+ *              `npm run test:e2e` in those repos runs their own tree and
+ *              stays meaningful. Flipping the flag to true IS the §5.6
+ *              milestone — do it deliberately, per app, and demote the
+ *              specs that fail.
  */
-module.exports = function createPlaywrightConfig({app, basePort = 8000}) {
+module.exports = function createPlaywrightConfig({
+	app,
+	basePort = 8000,
+	sharedTests = true,
+}) {
 	const appRoot = process.cwd();
 	require('dotenv').config({path: path.join(appRoot, '.env.playwright')});
 	const isCI = !!process.env.CI;
@@ -86,6 +107,22 @@ module.exports = function createPlaywrightConfig({app, basePort = 8000}) {
 	// no cross-process plumbing needed.
 	process.env.PLAYWRIGHT_BASE_PORT = String(resolvedBasePort);
 
+	// Shared FEATURE specs, gated by the `sharedTests` parameter above.
+	// The shared bootstrap.setup.js is never gated — it is the harness,
+	// not a feature spec, and every app depends on it.
+	//
+	// This has to be expressed as an IGNORE, not by dropping the glob from
+	// testMatch: Playwright prefixes a relative pattern with `**/`, so
+	// 'playwright/tests/**/*.spec.js' also matches
+	// 'lib/pkp/playwright/tests/foo.spec.js' — the app-tree glob alone can
+	// never exclude the shared tree. (The explicit lib/pkp entries in
+	// testMatch have therefore always been redundant; they stay for
+	// readability.) A pattern that starts at `lib/pkp/` is unambiguous
+	// under the same `**/` prefixing, so the ignore is exact.
+	const sharedSpecIgnores = sharedTests
+		? []
+		: ['lib/pkp/playwright/tests/**/*.spec.js'];
+
 	return defineConfig({
 		testDir: appRoot,
 		testMatch: [
@@ -94,6 +131,7 @@ module.exports = function createPlaywrightConfig({app, basePort = 8000}) {
 			'lib/pkp/playwright/tests/**/*.spec.js',
 			'lib/pkp/playwright/tests/**/*.setup.js',
 		],
+		testIgnore: sharedSpecIgnores,
 		fullyParallel: true,
 		forbidOnly: isCI,
 		retries: isCI ? 1 : 0,
@@ -252,6 +290,7 @@ module.exports = function createPlaywrightConfig({app, basePort = 8000}) {
 				testIgnore: [
 					'playwright/tests/serial/**',
 					'lib/pkp/playwright/tests/serial/**',
+					...sharedSpecIgnores,
 				],
 				use: {...devices['Desktop Chrome']},
 			},
@@ -288,6 +327,7 @@ module.exports = function createPlaywrightConfig({app, basePort = 8000}) {
 					'playwright/tests/serial/**/*.spec.js',
 					'lib/pkp/playwright/tests/serial/**/*.spec.js',
 				],
+				testIgnore: sharedSpecIgnores,
 				use: {...devices['Desktop Chrome']},
 			},
 		],
