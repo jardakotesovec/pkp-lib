@@ -234,17 +234,73 @@ exports.createApiClient = function createApiClient({request, baseURL}) {
 		},
 
 		/**
-		 * Bootstrap is now a thin alias over `createJournal` — the same
-		 * `/scenarios/journal` endpoint accepts the baseline spec
-		 * (sections + categories + issues + users-with-passwords)
+		 * Call the test-only context scenario endpoint on its CANONICAL
+		 * cross-app route, `/_test/scenarios/context`. Every app answers
+		 * it (PKPContextScenarioController registers it); each app also
+		 * registers one vocabulary alias for readability — `journal`
+		 * (OJS), `press` (OMP), `server` (OPS) — but shared harness code
+		 * must post here so one helper works on all three.
+		 *
+		 * Same request/response shape as createJournal; see
+		 * lib/pkp/classes/testing/scenario/schema/context.json plus the
+		 * per-app schema overlays (OJS `issues`/`subscriptions`, …).
+		 *
+		 * @param {object} spec
+		 * @returns {Promise<{context: {id: number, path: string, name: object|null, primaryLocale: string|null, primaryManager: {username: string}|null}, tag: string}>}
+		 */
+		async createContext(spec) {
+			if (!testApiKey) {
+				throw new Error(
+					'TEST_API_KEY env var is not set. Set it (same value on client and server) to call /api/v1/_test/scenarios/context.',
+				);
+			}
+			const t0 = Date.now();
+			const res = await request.post(
+				'/index.php/index/api/v1/_test/scenarios/context',
+				{
+					headers: {
+						'X-Test-Key': testApiKey,
+						'Content-Type': 'application/json',
+					},
+					data: spec,
+				},
+			);
+			const ms = Date.now() - t0;
+			writeScenarioTiming({
+				ts: t0,
+				endpoint: 'context',
+				ms,
+				status: res.status(),
+				tag: spec?.tag,
+				keys: Object.keys(spec || {}),
+			});
+			const bodyText = await res.text();
+			if (!res.ok()) {
+				throw new Error(
+					`createContext failed: ${res.status()} — ${bodyText}`,
+				);
+			}
+			try {
+				return JSON.parse(bodyText);
+			} catch {
+				throw new Error(`createContext returned non-JSON body: ${bodyText}`);
+			}
+		},
+
+		/**
+		 * Bootstrap is a thin alias over `createContext` — the same
+		 * endpoint accepts the baseline spec (sections/series + categories
+		 * + users-with-passwords, plus each app's own overlay keys)
 		 * alongside the per-test scratch shape. Kept as a named method so
-		 * `bootstrap.setup.js` reads idiomatically.
+		 * `bootstrap.setup.js` reads idiomatically, and routed through the
+		 * canonical `context` spelling so the ONE shared setup file
+		 * bootstraps OJS, OMP and OPS unchanged.
 		 *
 		 * @param {object} spec  see lib/pkp/classes/testing/scenario/schema/context.json
 		 * @returns {Promise<object>}
 		 */
 		async bootstrap(spec) {
-			return this.createJournal(spec);
+			return this.createContext(spec);
 		},
 	};
 };

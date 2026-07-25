@@ -1,8 +1,28 @@
 // @ts-check
+const path = require('path');
 const base = require('@playwright/test');
 const {createApiClient} = require('./api.js');
 const {createMailClient} = require('./mail.js');
 const {ensureAuthStateFor} = require('./auth.js');
+
+/**
+ * Resolve the running app's capability map. `process.cwd()` is the app
+ * checkout root under Playwright (config-factory sets `testDir` to it), so
+ * `<appRoot>/playwright/support/app.context.js` identifies the app without
+ * any env plumbing — see MULTIAPP-PLAN §3 "App detection".
+ *
+ * Cached at module scope: the file is a plain object literal, and every
+ * worker requires this module once.
+ */
+let appContextCache;
+function loadAppContext() {
+	if (appContextCache === undefined) {
+		appContextCache = require(
+			path.join(process.cwd(), 'playwright', 'support', 'app.context.js'),
+		);
+	}
+	return appContextCache;
+}
 
 /**
  * First port of this app's PHP dev-server block — 8000 for OJS, 8100 for
@@ -41,6 +61,13 @@ function resolveBasePort(testInfo) {
  * fixtures on top; OMP/OPS do the same in their own repos.
  *
  * Fixtures provided:
+ *   appContext   — the running app's capability map, loaded from
+ *                  <appRoot>/playwright/support/app.context.js. Shared
+ *                  specs gate on CAPABILITIES, never app names:
+ *                  `test.skip(!appContext.hasReviewStage, …)`. The
+ *                  canonical `hasX` spellings live in
+ *                  docs/product/APP-GLOSSARY.md §2; vocabulary and seed
+ *                  names come from `appContext.vocab` / `.seed`.
  *   baseURL      — overrides Playwright's built-in fixture. Each parallel
  *                  worker gets its own dedicated PHP dev server on port
  *                  basePort + parallelIndex (see config-factory.js
@@ -90,6 +117,27 @@ exports.test = base.test.extend({
 			return;
 		}
 		await use(`http://127.0.0.1:${resolveBasePort(testInfo) + testInfo.parallelIndex}`);
+	},
+
+	appContext: async ({}, use, testInfo) => {
+		const ctx = loadAppContext();
+		// Cross-check against the Playwright project name (MULTIAPP-PLAN
+		// §3). The 'setup' and 'serial' projects are app-neutral names, so
+		// only the app project participates in the check. A mismatch means
+		// the wrong app.context.js got loaded (e.g. a stray cwd), which
+		// would silently flip capability gates — fail loudly instead.
+		const projectName = testInfo?.project?.name;
+		if (
+			projectName &&
+			!['setup', 'serial'].includes(projectName) &&
+			ctx.app !== projectName
+		) {
+			throw new Error(
+				`appContext mismatch: playwright/support/app.context.js declares app ` +
+					`'${ctx.app}' but the Playwright project is '${projectName}'.`,
+			);
+		}
+		await use(ctx);
 	},
 
 	pkpApi: async ({request, baseURL}, use) => {
