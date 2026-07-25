@@ -1,14 +1,26 @@
 {
     "$schema": "http://json-schema.org/draft-07/schema#",
-    "title": "OJS submission scenario spec",
+    "title": "Submission scenario spec (context-agnostic)",
     "type": "object",
-    "required": ["tag", "journal", "submitter", "section"],
+    "required": ["tag", "submitter"],
+    "anyOf": [
+        { "required": ["context"] },
+        { "required": ["journal"] }
+    ],
     "additionalProperties": false,
     "properties": {
         "tag": { "type": "string", "minLength": 1, "maxLength": 64 },
-        "journal": { "type": "string", "minLength": 1 },
+        "context": {
+            "description": "urlPath of the owning context (journal / press / server) the submission is created in.",
+            "type": "string",
+            "minLength": 1
+        },
+        "journal": {
+            "description": "DEPRECATED back-compat alias for `context`, kept so the existing OJS fixtures keep working. New specs use `context`. When both are present `context` wins.",
+            "type": "string",
+            "minLength": 1
+        },
         "submitter": { "type": "string", "minLength": 1 },
-        "section": { "type": "string", "minLength": 1 },
         "locale": { "type": "string" },
         "submitted": { "type": "boolean" },
         "commentsForEditor": { "type": "string" },
@@ -55,11 +67,16 @@
         },
 
         "reviewRounds": {
+            "description": "Review rounds, consumed in order by the round-creating decisions in decisions[]. Each entry may declare the review stage it belongs to; the declaration is verified against the round the decision actually created, so a mis-ordered fixture fails loudly instead of seeding the wrong stage.",
             "type": "array",
             "items": {
                 "type": "object",
                 "additionalProperties": false,
                 "properties": {
+                    "stage": {
+                        "description": "Which review stage this round belongs to. 'external' (the default) exists in every app; 'internal' only exists where the app has an internal review stage (OMP). Optional — omit to accept whatever stage the preceding round-creating decision produced.",
+                        "enum": ["internal", "external"]
+                    },
                     "reviewers": {
                         "type": "array",
                         "items": { "$ref": "#/$defs/reviewer" }
@@ -136,6 +153,7 @@
         },
 
         "publication": {
+            "description": "Cross-app publication properties only. The publishing-container and representation properties (`issue`, `galleys`, `mediaFiles` in OJS; `publicationFormats` in OMP) are app overlays declared by each app's SubmissionScenarioController via schemaOverlayDefProperties()['publication'], and $ref the reusable $defs below.",
             "type": "object",
             "additionalProperties": false,
             "properties": {
@@ -146,34 +164,28 @@
                     "type": "object",
                     "additionalProperties": true
                 },
-                "issue": {
-                    "oneOf": [
-                        { "type": "string", "enum": ["latest", "current"] },
-                        {
-                            "type": "object",
-                            "additionalProperties": false,
-                            "properties": {
-                                "volume": { "type": ["integer", "null"] },
-                                "number": { "type": ["integer", "string", "null"] },
-                                "year": { "type": ["integer", "null"] }
-                            }
-                        }
-                    ]
-                },
                 "categories": {
                     "type": "array",
                     "items": { "type": "string", "minLength": 1 }
                 },
-                "published": { "type": "boolean" },
-                "galleys": {
-                    "type": "array",
-                    "items": { "$ref": "#/$defs/galley" }
-                },
-                "mediaFiles": {
-                    "type": "array",
-                    "items": { "$ref": "#/$defs/mediaFile" }
-                }
+                "published": { "type": "boolean" }
             }
+        },
+
+        "issue": {
+            "description": "App overlay building block (OJS). Referenced from the OJS publication overlay as { \"$ref\": \"#/$defs/issue\" }.",
+            "oneOf": [
+                { "type": "string", "enum": ["latest", "current"] },
+                {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "volume": { "type": ["integer", "null"] },
+                        "number": { "type": ["integer", "string", "null"] },
+                        "year": { "type": ["integer", "null"] }
+                    }
+                }
+            ]
         },
 
         "galley": {

@@ -187,11 +187,22 @@ class ScenarioContext
         ];
     }
 
-    public function recordReviewRound(int $round, int $roundId, array $reviewers): void
-    {
+    /**
+     * @param int $stageId  Workflow stage the round lives on. Echoed back in
+     *   the response so a test can assert an OMP round really landed on
+     *   internal review without a second DB read.
+     */
+    public function recordReviewRound(
+        int $round,
+        int $roundId,
+        array $reviewers,
+        int $stageId = WORKFLOW_STAGE_ID_EXTERNAL_REVIEW
+    ): void {
         $this->scenarioSubmission['reviewRounds'][] = [
             'round' => $round,
             'roundId' => $roundId,
+            'stageId' => $stageId,
+            'stage' => $stageId === WORKFLOW_STAGE_ID_INTERNAL_REVIEW ? 'internal' : 'external',
             'reviewers' => $reviewers,
         ];
     }

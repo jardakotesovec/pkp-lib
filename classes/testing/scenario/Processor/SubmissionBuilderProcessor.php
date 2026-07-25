@@ -66,10 +66,12 @@ class SubmissionBuilderProcessor implements ScenarioProcessor
 
     public function run(array $spec, ScenarioContext $ctx): array
     {
-        $context = $ctx->contextByPath($spec['journal']);
+        // `context` is normalised by PKPSubmissionScenarioController from
+        // either spelling; the `journal` fallback keeps the processor
+        // usable if it is ever driven directly from a legacy fixture.
+        $context = $ctx->contextByPath($spec['context'] ?? $spec['journal']);
         $submitter = $ctx->userByUsername($spec['submitter']);
         $locale = $spec['locale'] ?? 'en';
-        $sectionId = $this->resolveSectionId($context->getId(), $spec['section'], $locale);
 
         // Explicit `submitted: false` asks for a wizard draft. A real
         // in-progress submission keeps the markers the wizard's Start
@@ -92,18 +94,19 @@ class SubmissionBuilderProcessor implements ScenarioProcessor
             'contextId' => $context->getId(),
             'locale' => $locale,
             'status' => \PKP\submission\PKPSubmission::STATUS_QUEUED,
-            'stageId' => WORKFLOW_STAGE_ID_SUBMISSION,
+            'stageId' => $this->initialStageId(),
             'submissionProgress' => $isDraft ? 'start' : '',
             'dateSubmitted' => $isDraft ? null : Core::getCurrentDate(),
         ]);
-        $publication = Repo::publication()->newDataObject([
-            'sectionId' => $sectionId,
-            // PublicationVersionInfo requires non-null major/minor when
-            // versionStage is later set. Seed the natural defaults a new
-            // submission would get via the UI.
-            'versionMajor' => 1,
-            'versionMinor' => 0,
-        ]);
+        $publication = Repo::publication()->newDataObject(
+            $this->publicationContainerProps($spec, $context, $locale) + [
+                // PublicationVersionInfo requires non-null major/minor when
+                // versionStage is later set. Seed the natural defaults a new
+                // submission would get via the UI.
+                'versionMajor' => 1,
+                'versionMinor' => 0,
+            ]
+        );
         $submissionId = Repo::submission()->add($submission, $publication, $context);
 
         // Re-fetch so later processors see the wired-up currentPublicationId.
@@ -279,7 +282,7 @@ class SubmissionBuilderProcessor implements ScenarioProcessor
         \PKP\user\User $submitter
     ): void {
         $fixturePath = $this->resolveFixturePath();
-        $genre = GenreLookup::genreForKey($context->getId(), 'ARTICLE');
+        $genre = GenreLookup::genreForKey($context->getId(), $this->defaultFileGenreHandle());
 
         // Files-dir layout: {context-dir}/{contextId}/{submission-dir}/{submissionId}.
         // Same call SubmissionFilesUploadForm uses; the leading slash on
@@ -338,10 +341,53 @@ class SubmissionBuilderProcessor implements ScenarioProcessor
     }
 
     /**
+     * Publication properties that place the submission in its app's
+     * submission container. OJS/OPS: `sectionId`, resolved from the spec's
+     * `section` abbrev (an app-overlay spec key both of them declare).
+     * OMP overrides this to return `seriesId` — its publication schema has
+     * no `sectionId` column at all — and its series are optional, so an
+     * OMP spec with no container returns [].
+     *
+     * Returning an array (rather than an int) is what lets the container
+     * be absent entirely: OPS/OMP submissions can legitimately have none.
+     */
+    protected function publicationContainerProps(array $spec, \PKP\context\Context $context, string $locale): array
+    {
+        if (empty($spec['section'])) {
+            return [];
+        }
+        return ['sectionId' => $this->resolveSectionId($context->getId(), $spec['section'], $locale)];
+    }
+
+    /**
+     * The stage a brand-new submission enters. Taken from the app's own
+     * stage topology rather than hard-coded: OJS and OMP both start at
+     * WORKFLOW_STAGE_ID_SUBMISSION, but OPS has exactly one stage
+     * (production) and its submissions table even defaults stage_id to it.
+     * Hard-coding stage 1 would have parked every OPS submission in a
+     * stage that application does not have.
+     */
+    protected function initialStageId(): int
+    {
+        return Application::get()->getApplicationStages()[0];
+    }
+
+    /**
+     * GenreLookup handle for the file every seeded submission carries.
+     * The handle is app-neutral; GenreLookup maps it to whichever
+     * registry/genres.xml entry_key the app actually installs
+     * (SUBMISSION in OJS/OPS, MANUSCRIPT in OMP).
+     */
+    protected function defaultFileGenreHandle(): string
+    {
+        return 'ARTICLE';
+    }
+
+    /**
      * Resolve a section abbrev (e.g. 'ART') to its numeric section ID in the
      * given context. Falls back to the first section if the abbrev is empty.
      */
-    private function resolveSectionId(int $contextId, string $abbrev, string $locale): int
+    protected function resolveSectionId(int $contextId, string $abbrev, string $locale): int
     {
         $sections = Repo::section()->getCollector()
             ->filterByContextIds([$contextId])

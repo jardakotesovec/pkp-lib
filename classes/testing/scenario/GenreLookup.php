@@ -27,22 +27,29 @@ use PKP\submission\GenreDAO;
 class GenreLookup
 {
     /**
-     * Friendly handles accepted in scenario specs → entry_key column in
-     * the genres table (installed per-context from registry/genres.xml).
+     * Friendly handles accepted in scenario specs → candidate entry_key
+     * values in the genres table (installed per-context from the app's
+     * registry/genres.xml). Each handle lists the keys in preference
+     * order; the first one that exists in the context wins. The list
+     * exists because the same *concept* ships under different keys per
+     * app — the main text file is `SUBMISSION` in OJS and OPS but
+     * `MANUSCRIPT` in OMP — and scenario specs must stay app-neutral.
      */
     public const FRIENDLY_TO_GENRE_KEY = [
-        'ARTICLE' => 'SUBMISSION',
+        'ARTICLE' => ['SUBMISSION', 'MANUSCRIPT'],
         // Media-file seeding (publications[].mediaFiles[]): the IMAGE
         // genre ships supportsFileVariants=1 (registry/genres.xml), the
         // gate the Media tab's variant-type select keys on.
-        'IMAGE' => 'IMAGE',
+        'IMAGE' => ['IMAGE'],
     ];
 
     /**
-     * Translate a friendly handle to its registry/genres.xml entry_key.
-     * Throws on unknown handles so mistyped specs fail loudly.
+     * Translate a friendly handle to its candidate registry/genres.xml
+     * entry_keys. Throws on unknown handles so mistyped specs fail loudly.
+     *
+     * @return string[]
      */
-    public static function friendlyToGenreKey(string $friendly): string
+    public static function friendlyToGenreKeys(string $friendly): array
     {
         if (!isset(self::FRIENDLY_TO_GENRE_KEY[$friendly])) {
             throw new \InvalidArgumentException(
@@ -56,22 +63,25 @@ class GenreLookup
     /**
      * Return the Genre row matching the given friendly handle in the
      * given context. Relies on the default genres installed by
-     * GenreDAO::installDefaults() at journal creation time.
+     * GenreDAO::installDefaults() at context creation time.
      */
     public static function genreForKey(int $contextId, string $friendly): Genre
     {
-        $entryKey = self::friendlyToGenreKey($friendly);
+        $entryKeys = self::friendlyToGenreKeys($friendly);
         /** @var GenreDAO $genreDao */
         $genreDao = DAORegistry::getDAO('GenreDAO');
-        $genre = $genreDao->getByKey($entryKey, $contextId);
 
-        if (!$genre) {
-            throw new \RuntimeException(
-                "Could not find default genre '{$entryKey}' for context {$contextId}. "
-                . "Was the journal created through the standard service (which installs genres.xml)?"
-            );
+        foreach ($entryKeys as $entryKey) {
+            $genre = $genreDao->getByKey($entryKey, $contextId);
+            if ($genre) {
+                return $genre;
+            }
         }
 
-        return $genre;
+        throw new \RuntimeException(
+            "Could not find a default genre for handle '{$friendly}' (tried "
+            . implode(', ', $entryKeys) . ") in context {$contextId}. "
+            . 'Was the context created through the standard service (which installs genres.xml)?'
+        );
     }
 }

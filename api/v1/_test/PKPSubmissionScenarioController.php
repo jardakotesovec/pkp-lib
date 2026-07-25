@@ -78,6 +78,13 @@ class PKPSubmissionScenarioController extends PKPBaseController
             return response()->json(['error' => 'Invalid spec', 'details' => $validationError], Response::HTTP_BAD_REQUEST);
         }
 
+        // `journal` is the historical (OJS-only) spelling of `context`.
+        // Normalise once, here, so every processor downstream reads a
+        // single key. Both spellings are then present on $spec, which
+        // keeps app subclasses and their afterSubmissionCreated() hooks
+        // working whichever one they were written against.
+        $spec = $this->normaliseContextKey($spec);
+
         // Capture outbound mail for the whole request so decisions etc.
         // don't queue real messages. Other events (event log, notifications)
         // fire normally so tests can observe them.
@@ -95,10 +102,11 @@ class PKPSubmissionScenarioController extends PKPBaseController
         // a sibling request handled by the same PHP-CLI worker process
         // under workers=2 (mirrors the Registry::set/get save-restore
         // pattern in ContextBuilderProcessor).
-        $context = Application::getContextDAO()->getByPath($spec['journal'] ?? '');
+        $contextPath = $spec['context'];
+        $context = Application::getContextDAO()->getByPath($contextPath);
         if (!$context) {
             return response()->json(
-                ['error' => "Journal '{$spec['journal']}' not found. Bootstrap must seed it first."],
+                ['error' => "Context '{$contextPath}' not found. Bootstrap must seed it first."],
                 Response::HTTP_BAD_REQUEST
             );
         }
@@ -116,10 +124,10 @@ class PKPSubmissionScenarioController extends PKPBaseController
         // "current user" from the session.
 
         $ctx = new ScenarioContext();
-        $submissionBuilder = new SubmissionBuilderProcessor();
+        $submissionBuilder = $this->newSubmissionBuilderProcessor();
         $participantProcessor = new ParticipantProcessor();
-        $reviewRoundProcessor = new ReviewRoundProcessor();
-        $decisionProcessor = new DecisionProcessor($reviewRoundProcessor);
+        $reviewRoundProcessor = $this->newReviewRoundProcessor();
+        $decisionProcessor = $this->newDecisionProcessor($reviewRoundProcessor);
         $publicationsProcessor = new PublicationsProcessor();
         $userCommentProcessor = new UserCommentProcessor();
 
@@ -163,6 +171,48 @@ class PKPSubmissionScenarioController extends PKPBaseController
     }
 
     /**
+     * Accept either spelling of the owning-context key and republish both,
+     * with `context` authoritative. Called after schema validation, which
+     * already guarantees at least one of the two is present (the schema's
+     * anyOf), so the null-coalescing chain cannot fall through.
+     */
+    private function normaliseContextKey(array $spec): array
+    {
+        $path = $spec['context'] ?? $spec['journal'];
+        $spec['context'] = $path;
+        $spec['journal'] = $path;
+        return $spec;
+    }
+
+    /**
+     * Factories for the processors whose behaviour is app-shaped. Apps
+     * override to return their own subclass:
+     *
+     *  - submission builder — OJS/OPS put the submission in a `section`
+     *    (publication.sectionId); OMP puts it in a `series`
+     *    (publication.seriesId), a column OJS/OPS don't have.
+     *  - decision processor — the decision vocabulary is app-keyed: OMP
+     *    adds the whole internal-review family, OPS keeps only
+     *    Decline/Revert.
+     *  - review-round processor — apps may need a different reviewer
+     *    default shape; kept a factory for symmetry with the above.
+     */
+    protected function newSubmissionBuilderProcessor(): SubmissionBuilderProcessor
+    {
+        return new SubmissionBuilderProcessor();
+    }
+
+    protected function newReviewRoundProcessor(): ReviewRoundProcessor
+    {
+        return new ReviewRoundProcessor();
+    }
+
+    protected function newDecisionProcessor(ReviewRoundProcessor $reviewRoundProcessor): DecisionProcessor
+    {
+        return new DecisionProcessor($reviewRoundProcessor);
+    }
+
+    /**
      * App-specific additions to the scenario spec schema. The schema sets
      * additionalProperties:false, so app-only spec keys (e.g. OJS's
      * metrics) must be declared here to pass validation. Return a map of
@@ -171,6 +221,39 @@ class PKPSubmissionScenarioController extends PKPBaseController
      * Merged into the schema's properties before validation; default none.
      */
     protected function schemaOverlayProperties(): array
+    {
+        return [];
+    }
+
+    /**
+     * App-specific additions to a *nested* definition in the schema's
+     * `$defs` block — the mechanism the publishing-container and
+     * representation overlays use, since those keys live on
+     * `$defs/publication`, not at the spec root.
+     *
+     * Return [ '<def name>' => [ '<property>' => <JSON-schema array> ] ];
+     * each property is merged into `$defs.<def name>.properties`, which
+     * also exempts it from that definition's additionalProperties:false.
+     * Overlay definitions may `$ref` the shared building blocks that stay
+     * in the schema file (`#/$defs/issue`, `#/$defs/galley`,
+     * `#/$defs/mediaFile`).
+     *
+     * Example (OJS): ['publication' => ['issue' => ['$ref' => '#/$defs/issue']]]
+     */
+    protected function schemaOverlayDefProperties(): array
+    {
+        return [];
+    }
+
+    /**
+     * Spec keys the app makes mandatory on top of the shared `required`
+     * list. Exists because a key can be app-only AND non-optional: OJS
+     * requires `section` on every submission, but `section` is not a
+     * cross-app concept and so cannot sit in the shared schema.
+     *
+     * @return string[]
+     */
+    protected function schemaRequiredOverlay(): array
     {
         return [];
     }
@@ -211,6 +294,20 @@ class PKPSubmissionScenarioController extends PKPBaseController
             // Adding the property to `properties` also exempts it from the
             // additionalProperties:false check (draft-07 semantics).
             $schema->properties->{$property} = json_decode(json_encode($definition));
+        }
+        foreach ($this->schemaRequiredOverlay() as $property) {
+            if (!in_array($property, $schema->required ?? [], true)) {
+                $schema->required[] = $property;
+            }
+        }
+        foreach ($this->schemaOverlayDefProperties() as $defName => $properties) {
+            if (!isset($schema->{'$defs'}->{$defName})) {
+                return "Schema has no \$defs/{$defName} to overlay properties onto";
+            }
+            foreach ($properties as $property => $definition) {
+                $schema->{'$defs'}->{$defName}->properties->{$property}
+                    = json_decode(json_encode($definition));
+            }
         }
 
         $validator = new \Opis\JsonSchema\Validator();

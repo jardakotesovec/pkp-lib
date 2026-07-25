@@ -166,13 +166,15 @@
             }
         },
         "sections": {
+            "description": "Submission-container definitions: OJS sections, OPS sections, OMP series. Only `title` is required cross-app — `abbrev` is the OJS/OPS handle (their Section schema has no `path`), while OMP series are keyed by `path` and have no `abbrev` at all. Each app's SectionProcessor consumes the keys its own Section schema accepts.",
             "type": "array",
             "items": {
                 "type": "object",
-                "required": ["abbrev", "title"],
+                "required": ["title"],
                 "additionalProperties": true,
                 "properties": {
                     "abbrev": { "type": "object" },
+                    "path": { "type": "string" },
                     "title": { "type": "object" },
                     "wordCount": { "type": "integer", "minimum": 0 },
                     "identifyType": { "type": "object" },
@@ -217,13 +219,6 @@
                         }
                     }
                 }
-            }
-        },
-        "issues": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "additionalProperties": true
             }
         },
         "contact": {

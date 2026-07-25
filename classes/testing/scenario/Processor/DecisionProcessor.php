@@ -57,13 +57,51 @@ class DecisionProcessor implements ScenarioProcessor
         'revertInitialDecline' => Decision::REVERT_INITIAL_DECLINE,
     ];
 
-    /** Decision constants whose runAdditionalActions() creates a new review_rounds row. */
-    private const ROUND_CREATING = [
-        Decision::EXTERNAL_REVIEW,
-        Decision::NEW_EXTERNAL_ROUND,
+    /**
+     * Decision constants whose runAdditionalActions() creates a new
+     * review_rounds row, mapped to the workflow stage that round lands on.
+     * The stage is what tells the round processor which stage to stamp on
+     * the review assignments, and what the spec's `reviewRounds[].stage`
+     * declaration is checked against.
+     *
+     * App subclasses override to add their own round-creating decisions —
+     * OMP's internal-review family lands rounds on
+     * WORKFLOW_STAGE_ID_INTERNAL_REVIEW.
+     *
+     * @return array<int,int> decision constant => workflow stage id
+     */
+    protected function roundCreatingDecisions(): array
+    {
+        return [
+            Decision::EXTERNAL_REVIEW => WORKFLOW_STAGE_ID_EXTERNAL_REVIEW,
+            Decision::NEW_EXTERNAL_ROUND => WORKFLOW_STAGE_ID_EXTERNAL_REVIEW,
+        ];
+    }
+
+    /**
+     * Spec vocabulary => Decision constant. App subclasses override to
+     * extend (never to shrink — an app that lacks a decision simply never
+     * receives a spec naming it, and the DecisionType lookup in run()
+     * fails loudly if one slips through).
+     *
+     * @return array<string,int>
+     */
+    protected function decisionMap(): array
+    {
+        return self::DECISION_MAP;
+    }
+
+    /**
+     * Spec `reviewRounds[].stage` vocabulary => workflow stage id. The
+     * `internal` entry resolves to a constant that exists in lib/pkp for
+     * every app, but only OMP ever creates rounds on it.
+     */
+    private const STAGE_VOCABULARY = [
+        'internal' => WORKFLOW_STAGE_ID_INTERNAL_REVIEW,
+        'external' => WORKFLOW_STAGE_ID_EXTERNAL_REVIEW,
     ];
 
-    public function __construct(private ReviewRoundProcessor $reviewRoundProcessor)
+    public function __construct(protected ReviewRoundProcessor $reviewRoundProcessor)
     {
     }
 
@@ -140,21 +178,26 @@ class DecisionProcessor implements ScenarioProcessor
 
             // If the decision just created a round, delegate to ReviewRoundProcessor
             // with the next spec.reviewRounds[] entry.
-            if (in_array($decisionConst, self::ROUND_CREATING, true) && isset($reviewRoundSpecs[$reviewRoundsIdx])) {
+            $roundStageId = $this->roundCreatingDecisions()[$decisionConst] ?? null;
+            if ($roundStageId !== null && isset($reviewRoundSpecs[$reviewRoundsIdx])) {
+                $roundSpec = $reviewRoundSpecs[$reviewRoundsIdx];
                 /** @var \PKP\submission\reviewRound\ReviewRoundDAO $reviewRoundDao */
                 $reviewRoundDao = DAORegistry::getDAO('ReviewRoundDAO');
-                $round = $reviewRoundDao->getLastReviewRoundBySubmissionId($submissionId, WORKFLOW_STAGE_ID_EXTERNAL_REVIEW);
+                $round = $reviewRoundDao->getLastReviewRoundBySubmissionId($submissionId, $roundStageId);
                 if (!$round) {
                     throw new \RuntimeException(
                         "Decision '{$decisionSpec['type']}' was expected to create a review round "
-                        . "but no round exists after Repo::decision()->add() — is the decision cascading correctly?"
+                        . "at stage {$roundStageId} but no round exists after Repo::decision()->add() "
+                        . '— is the decision cascading correctly?'
                     );
                 }
+                $this->assertRoundStage($roundSpec, $roundStageId, $decisionSpec['type']);
                 $this->reviewRoundProcessor->run(
                     (int)$round->getId(),
                     (int)$round->getRound(),
-                    $reviewRoundSpecs[$reviewRoundsIdx],
-                    $ctx
+                    $roundSpec,
+                    $ctx,
+                    $roundStageId
                 );
                 $reviewRoundsIdx++;
             }
@@ -165,13 +208,43 @@ class DecisionProcessor implements ScenarioProcessor
 
     private function mapDecisionType(string $friendly): int
     {
-        if (!isset(self::DECISION_MAP[$friendly])) {
+        $map = $this->decisionMap();
+        if (!isset($map[$friendly])) {
             throw new \InvalidArgumentException(
                 "Unknown decision type '{$friendly}'. Known: "
-                . implode(', ', array_keys(self::DECISION_MAP))
+                . implode(', ', array_keys($map))
             );
         }
-        return self::DECISION_MAP[$friendly];
+        return $map[$friendly];
+    }
+
+    /**
+     * A `reviewRounds[]` entry may declare which review stage it belongs
+     * to. Rounds are still consumed in spec order (the order the
+     * round-creating decisions fire), so the declaration is a tripwire,
+     * not a selector: it catches a fixture whose rounds have drifted out
+     * of step with its decisions — the failure mode that would otherwise
+     * silently attach OMP's internal-round reviewers to an external round.
+     */
+    private function assertRoundStage(array $roundSpec, int $actualStageId, string $decisionType): void
+    {
+        if (!isset($roundSpec['stage'])) {
+            return;
+        }
+        $declared = self::STAGE_VOCABULARY[$roundSpec['stage']] ?? null;
+        if ($declared === null) {
+            throw new \InvalidArgumentException(
+                "Unknown reviewRounds[].stage '{$roundSpec['stage']}'. Known: "
+                . implode(', ', array_keys(self::STAGE_VOCABULARY))
+            );
+        }
+        if ($declared !== $actualStageId) {
+            throw new \RuntimeException(
+                "reviewRounds[] entry declares stage '{$roundSpec['stage']}' (stage {$declared}) "
+                . "but decision '{$decisionType}' created a round at stage {$actualStageId}. "
+                . 'Review rounds are consumed in the order their decisions fire — reorder the spec.'
+            );
+        }
     }
 
     private function currentReviewRoundId(int $submissionId, int $stageId): int

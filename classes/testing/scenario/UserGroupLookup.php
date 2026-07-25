@@ -45,6 +45,10 @@ class UserGroupLookup
         'author' => 'default.groups.name.author',
         'translator' => 'default.groups.name.translator',
         'reviewer' => 'default.groups.name.externalReviewer',
+        // OMP only — its internal review stage ships a second reviewer
+        // group. Harmless everywhere else: a spec naming it on an app
+        // without the group fails loudly in userGroupForRole().
+        'internalReviewer' => 'default.groups.name.internalReviewer',
         'reader' => 'default.groups.name.reader',
         'subscriptionManager' => 'default.groups.name.subscriptionManager',
         'editorialBoardMember' => 'default.groups.name.editorialBoardMember',

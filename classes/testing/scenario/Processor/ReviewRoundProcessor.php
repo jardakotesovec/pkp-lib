@@ -65,21 +65,31 @@ class ReviewRoundProcessor
     private const REVIEW_RESPONSE_DEFAULT_DUE_WEEKS = 3;
 
     /**
-     * @param array $roundSpec  Shape: ['reviewers' => [...]]
+     * @param array $roundSpec  Shape: ['stage' => 'internal'|'external', 'reviewers' => [...]]
+     * @param int $stageId  Workflow stage the round lives on. Defaults to
+     *   external review, the only review stage OJS and OPS have; OMP's
+     *   DecisionProcessor passes WORKFLOW_STAGE_ID_INTERNAL_REVIEW for
+     *   internal rounds. The value is stamped on every review assignment,
+     *   so getting it wrong hides the assignment from the stage's grid.
      * @return array  Fragment for the scenario response keyed to this round.
      */
-    public function run(int $roundId, int $round, array $roundSpec, ScenarioContext $ctx): array
-    {
+    public function run(
+        int $roundId,
+        int $round,
+        array $roundSpec,
+        ScenarioContext $ctx,
+        int $stageId = WORKFLOW_STAGE_ID_EXTERNAL_REVIEW
+    ): array {
         $submissionId = $ctx->submissionId();
         $contextId = $ctx->submissionContextId();
         $reviewerFragments = [];
 
         foreach ($roundSpec['reviewers'] ?? [] as $reviewerSpec) {
-            $fragment = $this->assignReviewer($reviewerSpec, $roundId, $round, $submissionId, $contextId, $ctx);
+            $fragment = $this->assignReviewer($reviewerSpec, $roundId, $round, $submissionId, $contextId, $ctx, $stageId);
             $reviewerFragments[] = $fragment;
         }
 
-        $ctx->recordReviewRound($round, $roundId, $reviewerFragments);
+        $ctx->recordReviewRound($round, $roundId, $reviewerFragments, $stageId);
 
         return $reviewerFragments;
     }
@@ -90,7 +100,8 @@ class ReviewRoundProcessor
         int $round,
         int $submissionId,
         int $contextId,
-        ScenarioContext $ctx
+        ScenarioContext $ctx,
+        int $stageId = WORKFLOW_STAGE_ID_EXTERNAL_REVIEW
     ): array {
         $reviewer = $ctx->userByUsername($reviewerSpec['user']);
         $methodString = $reviewerSpec['method'] ?? 'anonymous';
@@ -102,7 +113,7 @@ class ReviewRoundProcessor
             'submissionId' => $submissionId,
             'reviewerId' => $reviewer->getId(),
             'reviewRoundId' => $roundId,
-            'stageId' => WORKFLOW_STAGE_ID_EXTERNAL_REVIEW,
+            'stageId' => $stageId,
             'reviewMethod' => $method,
             // Round number on the assignment must match the round it's
             // attached to, otherwise updateReviewRoundStatus (called by

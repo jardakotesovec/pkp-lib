@@ -12,9 +12,15 @@
  * @ingroup api_v1_test
  *
  * @brief Handles POST requests that build a scratch context (journal/press/
- *        server) for per-test scenarios. Concrete subclass registers the
- *        app-specific route — OJS's JournalScenarioController registers
- *        `journal`, OMP's would register `press`, OPS's `server`.
+ *        server) for per-test scenarios.
+ *
+ * The canonical route is `POST /_test/scenarios/context`, registered here
+ * so every app answers the same URL. Each app's subclass additionally
+ * registers a vocabulary alias for its own context type — `journal` (OJS),
+ * `press` (OMP), `server` (OPS) — by calling parent::getGroupRoutes() and
+ * adding one Route::post. The OJS `journal` alias is a hard back-compat
+ * requirement: `bootstrap.setup.js` and the whole existing OJS suite post
+ * to it.
  *
  * Tests that mutate context-level configuration (sections, email templates,
  * plugin settings, reviewer recommendations, task templates, …) create
@@ -34,6 +40,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Route;
 use PKP\core\PKPBaseController;
 use PKP\core\PKPRequest;
 use PKP\testing\bootstrap\Processor\AnnouncementProcessor;
@@ -55,6 +62,16 @@ abstract class PKPContextScenarioController extends PKPBaseController
     public function getRouteGroupMiddleware(): array
     {
         return ['test.mode'];
+    }
+
+    /**
+     * The app-neutral route every app answers. Subclasses call
+     * parent::getGroupRoutes() and add their own vocabulary alias.
+     */
+    public function getGroupRoutes(): void
+    {
+        Route::post('context', $this->context(...))
+            ->name('test.scenarios.context');
     }
 
     /**
@@ -81,9 +98,10 @@ abstract class PKPContextScenarioController extends PKPBaseController
 
         // Tag-derived path keeps parallel worker runs from colliding and
         // avoids accidental reuse of the publicknowledge path. Sanitised
-        // to satisfy OJS's urlPath constraints (alnum, no spaces).
+        // to satisfy the urlPath constraints (alnum, no spaces).
         if (empty($spec['path'])) {
-            $spec['path'] = 'j-' . preg_replace('/[^a-z0-9]/i', '', strtolower($spec['tag']));
+            $spec['path'] = $this->scratchPathPrefix()
+                . preg_replace('/[^a-z0-9]/i', '', strtolower($spec['tag']));
         }
 
         // Capture outbound mail so context creation (welcome emails, etc.)
@@ -93,7 +111,7 @@ abstract class PKPContextScenarioController extends PKPBaseController
         $ctx = new ScenarioContext();
         $contextBuilder = new ContextBuilderProcessor();
         $userAssignment = new UserAssignmentProcessor();
-        $sectionProcessor = new SectionProcessor();
+        $sectionProcessor = $this->newSectionProcessor();
         $categoryProcessor = new CategoryProcessor();
         $reviewFormProcessor = new ReviewFormProcessor();
         $reviewFormsResult = null;
@@ -209,6 +227,27 @@ abstract class PKPContextScenarioController extends PKPBaseController
             }
         }
         return $flat;
+    }
+
+    /**
+     * Prefix for the auto-derived scratch context path. Overridden per app
+     * only for readability of the seeded URLs; nothing keys on it.
+     */
+    protected function scratchPathPrefix(): string
+    {
+        return 'j-';
+    }
+
+    /**
+     * Factory for the submission-container processor. OJS/OPS use the
+     * shared abbrev-keyed SectionProcessor as-is; OMP's press series have
+     * no `abbrev` column and are keyed by `path`, so OMP returns its own
+     * subclass. Kept a factory (rather than a `new` in context()) so an
+     * app can swap the processor without reimplementing context().
+     */
+    protected function newSectionProcessor(): SectionProcessor
+    {
+        return new SectionProcessor();
     }
 
     /**
