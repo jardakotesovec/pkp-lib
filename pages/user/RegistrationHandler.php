@@ -104,27 +104,29 @@ class RegistrationHandler extends UserHandler
             $this->setupTemplate($request);
             $templateMgr = TemplateManager::getManager($request);
             $templateMgr->assign([
-                'requireValidation' => true,
-                'pageTitle' => 'user.login.registrationPendingValidation',
-                'messageTranslated' => __('user.login.accountNotValidated', ['email' => $regForm->getData('email')]),
+                'title' => __('user.login.registrationPendingValidation'),
+                'message' => __('user.login.accountNotValidated', ['email' => $regForm->getData('email')]),
             ]);
-            return $templateMgr->display('frontend/pages/message.tpl');
+            return $templateMgr->display('frontend/pages/system-message.tpl');
         }
 
         $reason = null;
         Validation::login($regForm->getData('username'), $regForm->getData('password'), $reason);
+        $reason = 'Beacuse I said so';
 
         if ($reason !== null) {
             $this->setupTemplate($request);
             $templateMgr = TemplateManager::getManager($request);
             $templateMgr->assign([
-                'pageTitle' => 'user.login',
-                'errorMsg' => $reason == '' ? 'user.login.accountDisabled' : 'user.login.accountDisabledWithReason',
-                'errorParams' => ['reason' => $reason],
+                'title' => __('common.disabled'),
+                'message' => $reason == ''
+                    ? __('user.login.accountDisabled')
+                    : __('user.login.accountDisabledWithReason', ['reason' => $reason]),
+                'type' => 'error',
                 'backLink' => $request->url(null, 'login'),
-                'backLinkLabel' => 'user.login',
+                'backLinkLabel' => __('user.login'),
             ]);
-            return $templateMgr->display('frontend/pages/error.tpl');
+            return $templateMgr->display('frontend/pages/system-message.tpl');
         }
 
         $source = str_replace('@', '', $request->getUserVar('source'));
@@ -187,8 +189,11 @@ class RegistrationHandler extends UserHandler
 
             if ($user->getDateValidated() != null) { // The user is activated
                 $templateMgr = TemplateManager::getManager($request);
-                $templateMgr->assign('message', 'user.login.activated');
-                return $templateMgr->display('frontend/pages/message.tpl');
+                $templateMgr->assign([
+                    'title' => __('common.completed'),
+                    'message' => __('user.login.activated'),
+                ]);
+                return $templateMgr->display('frontend/pages/system-message.tpl');
             }
 
             $request->redirect(null, 'login');
@@ -227,12 +232,13 @@ class RegistrationHandler extends UserHandler
             $this->setupTemplate($request);
             $templateMgr = TemplateManager::getManager($request);
             $templateMgr->assign([
-                'pageTitle' => 'user.register',
-                'errorMsg' => 'user.register.registrationDisabled',
+                'pageTitle' => __('user.register'),
+                'message' => __('user.register.registrationDisabled'),
+                'type' => 'error',
                 'backLink' => $request->url(null, 'login'),
-                'backLinkLabel' => 'user.login',
+                'backLinkLabel' => __('user.login'),
             ]);
-            $templateMgr->display('frontend/pages/error.tpl');
+            $templateMgr->display('frontend/pages/system-message.tpl');
             exit;
         }
     }

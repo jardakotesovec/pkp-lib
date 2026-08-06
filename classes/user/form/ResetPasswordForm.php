@@ -112,7 +112,7 @@ class ResetPasswordForm extends Form
         $user->setMustChangePassword(0);
 
         Application::get()->getRequest()->getSessionGuard()->updateUser($user);
-        
+
         $user = Auth::logoutOtherDevices($this->getData('password'));
 
         Repo::user()->edit($user);
@@ -141,14 +141,16 @@ class ResetPasswordForm extends Form
      */
     public function displayInvalidHashErrorMessage($request, $template = null)
     {
-        $this->setTemplate('frontend/pages/error.tpl');
+        $this->setTemplate('frontend/pages/system-message.tpl');
 
         $templateMgr = TemplateManager::getManager($request);
 
         $templateMgr->assign([
-            'errorMsg' => 'user.login.lostPassword.invalidHash',
+            'title' => __('common.error'),
+            'message' => __('user.login.lostPassword.invalidHash'),
+            'type' => 'error',
             'backLink' => $request->url(null, null, 'lostPassword'),
-            'backLinkLabel' => 'user.login.resetPassword',
+            'backLinkLabel' => __('user.login.resetPassword'),
         ]);
 
         parent::display($request, $template);

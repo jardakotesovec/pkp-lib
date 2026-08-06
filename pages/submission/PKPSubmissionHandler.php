@@ -187,7 +187,7 @@ abstract class PKPSubmissionHandler extends Handler
             )
         ) {
             $this->showErrorPage(
-                'submission.wizard.sectionClosed',
+                __('submission.wizard.sectionClosed'),
                 __('submission.wizard.sectionClosed.message', [
                     'contextName' => $context->getLocalizedData('name'),
                     'section' => $section->getLocalizedTitle(),
@@ -1000,15 +1000,15 @@ abstract class PKPSubmissionHandler extends Handler
     /**
      * Show an error page
      */
-    protected function showErrorPage(string $titleLocaleKey, string $message): void
+    protected function showErrorPage(string $title, string $message): void
     {
         $this->_isBackendPage = false;
         $templateMgr = TemplateManager::getManager(Application::get()->getRequest());
         $templateMgr->assign([
-            'pageTitle' => $titleLocaleKey,
-            'messageTranslated' => $message,
+            'title' => $title,
+            'message' => $message,
         ]);
-        $templateMgr->display('frontend/pages/message.tpl');
+        $templateMgr->display('frontend/pages/system-message.tpl');
     }
 
     /**
