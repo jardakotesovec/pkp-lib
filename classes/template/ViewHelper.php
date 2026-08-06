@@ -13,6 +13,7 @@
 
 namespace PKP\template;
 
+use APP\core\Application;
 use PKP\core\PKPString;
 
 class ViewHelper
@@ -75,6 +76,18 @@ class ViewHelper
     {
         $result = PKPString::html2text($html);
         return self::escapeVueDelimiters($result);
+    }
+
+    /**
+     * Add the user's CSRF token to a template
+     */
+    public static function csrf(): string
+    {
+        $csrfToken = Application::get()->getRequest()->getSession()->token();
+        if (!$csrfToken) {
+            return '';
+        }
+        return '<input type="hidden" name="csrfToken" value="' . htmlspecialchars($csrfToken) . '" />';
     }
 
     /**
