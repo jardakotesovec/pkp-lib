@@ -79,9 +79,9 @@ class ViewHelper
     }
 
     /**
-     * Add the user's CSRF token to a template
+     * Add a hidden form field with the user's CSRF token
      */
-    public static function csrf(): string
+    public static function csrfFormField(): string
     {
         $csrfToken = Application::get()->getRequest()->getSession()->token();
         if (!$csrfToken) {
