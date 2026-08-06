@@ -27,6 +27,7 @@ use PKP\notification\Notification;
 use PKP\notification\PKPNotificationManager;
 use PKP\observers\events\UserRegisteredContext;
 use PKP\observers\events\UserRegisteredSite;
+use PKP\security\Role;
 use PKP\security\Validation;
 use PKP\user\form\RegistrationForm;
 use Symfony\Component\Mailer\Exception\TransportException;
@@ -50,8 +51,12 @@ class RegistrationHandler extends UserHandler
         // If the user is logged in, show them the registration success page
         if (Validation::isLoggedIn()) {
             $this->setupTemplate($request);
+            $userRoles = $this->getAuthorizedContextObject(Application::ASSOC_TYPE_USER_ROLES);
             $templateMgr = TemplateManager::getManager($request);
-            $templateMgr->assign('pageTitle', 'user.login.registrationComplete');
+            $templateMgr->assign([
+                'pageTitle' => 'user.login.registrationComplete',
+                'canViewSubmissions' => array_intersect([Role::ROLE_ID_MANAGER, Role::ROLE_ID_SUB_EDITOR, Role::ROLE_ID_ASSISTANT, Role::ROLE_ID_REVIEWER], $userRoles),
+            ]);
             return $templateMgr->display('frontend/pages/userRegisterComplete.tpl');
         }
 
@@ -174,7 +179,7 @@ class RegistrationHandler extends UserHandler
                 $request->redirect(null, 'login');
             }
             $invitation->finalize();
-            
+
             $user = Repo::user()->getByUsername($username, true);
             if (!$user) {
                 $request->redirect(null, 'login');
