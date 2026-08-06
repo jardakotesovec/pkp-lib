@@ -24,7 +24,7 @@
 	   before dowloading a file. *}
 	{if $loginMessage}
 		<p>
-			{translate key=$loginMessage}
+			{$loginMessage|strip_unsafe_html}
 		</p>
 	{/if}
 
