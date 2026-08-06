@@ -1004,11 +1004,10 @@ abstract class PKPSubmissionHandler extends Handler
     {
         $this->_isBackendPage = false;
         $templateMgr = TemplateManager::getManager(Application::get()->getRequest());
-        $templateMgr->assign([
-            'title' => $title,
-            'message' => $message,
-        ]);
-        $templateMgr->display('frontend/pages/system-message.tpl');
+        $templateMgr->displaySystemMessage(
+            title: $title,
+            message: $message,
+        );
     }
 
     /**

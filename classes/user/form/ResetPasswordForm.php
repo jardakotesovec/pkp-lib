@@ -139,20 +139,15 @@ class ResetPasswordForm extends Form
      *
      * @param null|mixed $template
      */
-    public function displayInvalidHashErrorMessage($request, $template = null)
+    public function displayInvalidHashErrorMessage($request)
     {
-        $this->setTemplate('frontend/pages/system-message.tpl');
-
         $templateMgr = TemplateManager::getManager($request);
-
-        $templateMgr->assign([
-            'title' => __('common.error'),
-            'message' => __('user.login.lostPassword.invalidHash'),
-            'type' => 'error',
-            'backLink' => $request->url(null, null, 'lostPassword'),
-            'backLinkLabel' => __('user.login.resetPassword'),
-        ]);
-
-        parent::display($request, $template);
+        $templateMgr->displaySystemMessage(
+            title: __('common.error'),
+            message: __('user.login.lostPassword.invalidHash'),
+            type: 'error',
+            backLink: $request->url(null, null, 'lostPassword'),
+            backLinkLabel: __('user.login.resetPassword'),
+        );
     }
 }

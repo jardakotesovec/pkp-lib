@@ -1710,6 +1710,25 @@ class PKPTemplateManager extends Smarty
     }
 
     /**
+     * Display a system message template
+     */
+    public function displaySystemMessage(
+        string $title,
+        string $message,
+        string $type = 'message',
+        string $backLink = '',
+        string $backLinkLabel = '',
+    ) {
+        $this->assign([
+            'title' => $title,
+            'message' => $message,
+            'type' => $type,
+            'backLink' => $backLink,
+            'backLinkLabel' => $backLinkLabel,
+        ]);
+        $this->display('frontend/pages/system-message.tpl');
+    }
+    /**
      * Clear template compile and cache directories.
      */
     public function clearTemplateCache()
