@@ -217,6 +217,7 @@ class PKPTemplateManager extends Smarty
             'currentLocale' => $locale,
             'currentLocaleLangDir' => Locale::getMetadata($locale)?->isRightToLeft() ? 'rtl' : 'ltr',
             'applicationName' => __($application->getNameKey()),
+            'site' => $request->getSite(),
         ]);
 
         // Assign date and time format
