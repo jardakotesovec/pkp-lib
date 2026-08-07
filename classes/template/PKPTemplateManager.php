@@ -932,6 +932,14 @@ class PKPTemplateManager extends Smarty
                 ]
             );
 
+            $this->addStyleSheet(
+                'pkpAppFrontend',
+                $baseUrl . '/styles/build_frontend.css',
+                [
+                    'priority' => self::STYLE_SEQUENCE_CORE,
+                    'contexts' => ['frontend']
+                ]
+            );
         }
     }
 

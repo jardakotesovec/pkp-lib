@@ -940,6 +940,9 @@ msgstr "Select {$name}"
 msgid "common.sendEmail"
 msgstr "Send Email"
 
+msgid "common.sending"
+msgstr "Sending"
+
 msgid "common.showAllSteps"
 msgstr "Show all steps"
 

@@ -34,15 +34,14 @@ import PkpButton from '@/frontend/components/PkpButton/PkpButton.vue';
 import PkpTextarea from '@/frontend/components/PkpTextarea/PkpTextarea.vue';
 import PkpDropdownMenu from '@/frontend/components/PkpDropdownMenu/PkpDropdownMenu.vue';
 import PkpIcon from '@/frontend/components/PkpIcon/PkpIcon.vue';
-import PkpScrollToComments from '@/frontend/components/PkpComments/PkpScrollToComments.vue';
 import PkpComments from '@/frontend/components/PkpComments/PkpComments.vue';
-import PkpCommentReportDialog from '@/frontend/components/PkpComments/PkpCommentReportDialog.vue';
 import PkpOpenReview from '@/frontend/components/PkpOpenReview/PkpOpenReview.vue';
 import PkpOpenReviewSummary from '@/frontend/components/PkpOpenReview/PkpOpenReviewSummary.vue';
 import PkpCombobox from '@/frontend/components/PkpCombobox/PkpCombobox.vue';
 import PkpCiteBody from '@/frontend/components/PkpCite/PkpCiteBody.vue';
 import PkpCrossmarkButton from '@/frontend/components/PkpCrossmarkButton/PkpCrossmarkButton.vue';
 import PkpUsageChart from '@/frontend/components/PkpUsageChart/PkpUsageChart.vue';
+import PkpSpinner from '@/frontend/components/PkpSpinner/PkpSpinner.vue';
 
 // Pinia stores
 import {usePkpModalStore} from '@/frontend/stores/pkpModalStore';
@@ -67,17 +66,6 @@ import PkpAccordionContent from '@/frontend/components/PkpAccordion/PkpAccordion
 
 // PkpComments sub-components (for use in slot overrides)
 import PkpCommentsShowMore from '@/frontend/components/PkpComments/PkpCommentsShowMore.vue';
-import PkpCommentsLogInto from '@/frontend/components/PkpComments/PkpCommentsLogInto.vue';
-import PkpCommentsMessageActions from '@/frontend/components/PkpComments/PkpCommentsMessageActions.vue';
-import PkpCommentsNew from '@/frontend/components/PkpComments/PkpCommentsNew.vue';
-import PkpCommentsNewInput from '@/frontend/components/PkpComments/PkpCommentsNewInput.vue';
-import PkpCommentsNewSubmit from '@/frontend/components/PkpComments/PkpCommentsNewSubmit.vue';
-import PkpCommentsNotificationMessageNeedsApproval from '@/frontend/components/PkpComments/PkpCommentsNotificationMessageNeedsApproval.vue';
-import PkpCommentsNotificationNotLatest from '@/frontend/components/PkpComments/PkpCommentsNotificationNotLatest.vue';
-import PkpScrollToCommentsAllComments from '@/frontend/components/PkpComments/PkpScrollToCommentsAllComments.vue';
-import PkpScrollToCommentsLogInto from '@/frontend/components/PkpComments/PkpScrollToCommentsLogInto.vue';
-import PkpCommentReportDialogAuthor from '@/frontend/components/PkpComments/PkpCommentReportDialogAuthor.vue';
-import PkpCommentReportDialogReasonInput from '@/frontend/components/PkpComments/PkpCommentReportDialogReasonInput.vue';
 
 // Reka Popover
 import {
@@ -123,15 +111,14 @@ VueRegistry.registerComponent('PkpModalManager', PkpModalManager);
 VueRegistry.registerComponent('PkpTextarea', PkpTextarea);
 VueRegistry.registerComponent('PkpDropdownMenu', PkpDropdownMenu);
 VueRegistry.registerComponent('PkpIcon', PkpIcon);
-VueRegistry.registerComponent('PkpScrollToComments', PkpScrollToComments);
 VueRegistry.registerComponent('PkpComments', PkpComments);
-VueRegistry.registerComponent('PkpCommentReportDialog', PkpCommentReportDialog);
 VueRegistry.registerComponent('PkpOpenReview', PkpOpenReview);
 VueRegistry.registerComponent('PkpOpenReviewSummary', PkpOpenReviewSummary);
 VueRegistry.registerComponent('PkpCombobox', PkpCombobox);
 VueRegistry.registerComponent('PkpCiteBody', PkpCiteBody);
 VueRegistry.registerComponent('PkpCrossmarkButton', PkpCrossmarkButton);
 VueRegistry.registerComponent('PkpUsageChart', PkpUsageChart);
+VueRegistry.registerComponent('PkpSpinner', PkpSpinner);
 
 // Register PkpTab Components
 VueRegistry.registerComponent('PkpTabRoot', PkpTabRoot);
@@ -147,38 +134,6 @@ VueRegistry.registerComponent('PkpAccordionHeader', PkpAccordionHeader);
 VueRegistry.registerComponent('PkpAccordionContent', PkpAccordionContent);
 
 // Register PkpComments sub-components so theme plugins can use them in slot overrides
-VueRegistry.registerComponent('PkpCommentsLogInto', PkpCommentsLogInto);
-VueRegistry.registerComponent(
-	'PkpCommentsMessageActions',
-	PkpCommentsMessageActions,
-);
-VueRegistry.registerComponent('PkpCommentsNew', PkpCommentsNew);
-VueRegistry.registerComponent('PkpCommentsNewInput', PkpCommentsNewInput);
-VueRegistry.registerComponent('PkpCommentsNewSubmit', PkpCommentsNewSubmit);
-VueRegistry.registerComponent(
-	'PkpCommentsNotificationMessageNeedsApproval',
-	PkpCommentsNotificationMessageNeedsApproval,
-);
-VueRegistry.registerComponent(
-	'PkpCommentsNotificationNotLatest',
-	PkpCommentsNotificationNotLatest,
-);
-VueRegistry.registerComponent(
-	'PkpScrollToCommentsAllComments',
-	PkpScrollToCommentsAllComments,
-);
-VueRegistry.registerComponent(
-	'PkpScrollToCommentsLogInto',
-	PkpScrollToCommentsLogInto,
-);
-VueRegistry.registerComponent(
-	'PkpCommentReportDialogAuthor',
-	PkpCommentReportDialogAuthor,
-);
-VueRegistry.registerComponent(
-	'PkpCommentReportDialogReasonInput',
-	PkpCommentReportDialogReasonInput,
-);
 VueRegistry.registerComponent('PkpCommentsShowMore', PkpCommentsShowMore);
 
 // Register Reka UI components
