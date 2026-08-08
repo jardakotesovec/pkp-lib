@@ -37,12 +37,22 @@ class DevQueryLog
         static::$registered = true;
 
         $captureSql = (bool) getenv('PKP_QUERY_LOG_SQL');
+        $tracePattern = getenv('PKP_QUERY_LOG_TRACE') ?: null;
 
-        DB::listen(function (QueryExecuted $query) use ($captureSql) {
+        DB::listen(function (QueryExecuted $query) use ($captureSql, $tracePattern) {
             static::$count++;
             static::$timeMs += $query->time;
             if ($captureSql) {
-                static::$queries[] = ['sql' => $query->sql, 'ms' => $query->time];
+                $entry = ['sql' => $query->sql, 'ms' => $query->time];
+                if ($tracePattern && preg_match('/' . $tracePattern . '/', $query->sql)) {
+                    $entry['trace'] = collect(debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 40))
+                        ->filter(fn ($frame) => isset($frame['file']) && !str_contains($frame['file'], '/lib/vendor/'))
+                        ->map(fn ($frame) => basename(dirname($frame['file'])) . '/' . basename($frame['file']) . ':' . $frame['line'])
+                        ->values()
+                        ->take(12)
+                        ->all();
+                }
+                static::$queries[] = $entry;
             }
         });
 
