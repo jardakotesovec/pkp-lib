@@ -19,6 +19,7 @@
 namespace PKP\submission;
 
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use PKP\db\DAO;
 use PKP\db\DAOResultFactory;
@@ -27,6 +28,9 @@ use PKP\plugins\Hook;
 
 class GenreDAO extends DAO
 {
+    /** @var int Max lifetime (in seconds) for the context genre list cache */
+    public const MAX_CACHE_LIFETIME = 24 * 60 * 60;
+
     /**
      * Retrieve a genre by type id.
      *
@@ -131,6 +135,55 @@ class GenreDAO extends DAO
         );
 
         return new DAOResultFactory($result, $this, '_fromRow', ['id']);
+    }
+
+    /**
+     * Retrieve primary genres (not dependent, not supplementary) for a
+     * context from the cache, where available.
+     *
+     * Genres are context-static, so read paths that only need the list
+     * (e.g. frontend galley classification) can use this instead of
+     * getPrimaryByContextId() to avoid the per-genre settings queries.
+     *
+     * @return Genre[]
+     */
+    public function getPrimaryByContextIdCached(int $contextId): array
+    {
+        return Cache::remember(
+            "genres-primary-{$contextId}",
+            static::MAX_CACHE_LIFETIME,
+            fn () => $this->getPrimaryByContextId($contextId)->toArray()
+        );
+    }
+
+    /**
+     * Retrieve genres for a context based on whether they are supplementary
+     * or not, from the cache where available.
+     *
+     * @see self::getPrimaryByContextIdCached()
+     *
+     * @return Genre[]
+     */
+    public function getBySupplementaryAndContextIdCached(bool $supplementaryFilesOnly, int $contextId): array
+    {
+        return Cache::remember(
+            'genres-supplementary-' . (int) $supplementaryFilesOnly . "-{$contextId}",
+            static::MAX_CACHE_LIFETIME,
+            fn () => $this->getBySupplementaryAndContextId($supplementaryFilesOnly, $contextId)->toArray()
+        );
+    }
+
+    /**
+     * Clear the cached genre lists for a context.
+     *
+     * Must be called whenever genres (or their settings) are mutated
+     * for the context.
+     */
+    public function forgetCache(int $contextId): void
+    {
+        Cache::forget("genres-primary-{$contextId}");
+        Cache::forget("genres-supplementary-0-{$contextId}");
+        Cache::forget("genres-supplementary-1-{$contextId}");
     }
 
     /**
@@ -281,6 +334,7 @@ class GenreDAO extends DAO
 
         $genre->setId($this->getInsertId());
         $this->updateLocaleFields($genre);
+        $this->forgetCache((int) $genre->getContextId());
         return $genre->getId();
     }
 
@@ -315,6 +369,7 @@ class GenreDAO extends DAO
             ]
         );
         $this->updateLocaleFields($genre);
+        $this->forgetCache((int) $genre->getContextId());
     }
 
     /**
@@ -332,9 +387,18 @@ class GenreDAO extends DAO
      */
     public function deleteById(int $genreId): int
     {
-        return DB::table('genres')
+        $contextId = DB::table('genres')
+            ->where('genre_id', '=', $genreId)
+            ->value('context_id');
+
+        $affectedRows = DB::table('genres')
             ->where('genre_id', '=', $genreId)
             ->update(['enabled' => 0]);
+
+        if ($contextId !== null) {
+            $this->forgetCache((int) $contextId);
+        }
+        return $affectedRows;
     }
 
     /**
@@ -351,6 +415,7 @@ class GenreDAO extends DAO
             'DELETE FROM genres WHERE context_id = ?',
             [(int) $contextId]
         );
+        $this->forgetCache($contextId);
     }
 
     /**
@@ -394,6 +459,7 @@ class GenreDAO extends DAO
                 $this->insertObject($genre);
             }
         }
+        $this->forgetCache($contextId);
     }
 
     /**
@@ -445,5 +511,9 @@ class GenreDAO extends DAO
     public function deleteSettingsByLocale($locale)
     {
         $this->update('DELETE FROM genre_settings WHERE locale = ?', [$locale]);
+        // The cached genre lists include settings; clear them for all contexts.
+        foreach (DB::table('genres')->distinct()->pluck('context_id') as $contextId) {
+            $this->forgetCache((int) $contextId);
+        }
     }
 }
