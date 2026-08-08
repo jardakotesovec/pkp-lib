@@ -28,6 +28,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Arr;
 use PKP\affiliation\models\Affiliation;
+use PKP\author\creditContributorRole\CreditContributorRole;
 use PKP\core\traits\ModelWithSettings;
 
 class Author extends Model
@@ -114,13 +115,24 @@ class Author extends Model
     }
 
     /**
+     * CRediT/contributor role links of this contributor
+     */
+    public function creditContributorRoles(): HasMany
+    {
+        return $this->hasMany(CreditContributorRole::class, 'contributor_id', 'author_id');
+    }
+
+    /**
      * Bridge to the DataObject representation used by templates, hooks and
      * the rest of the application. Mirrors what EntityDAO::fromRow() +
-     * \PKP\author\DAO::fromRow() produce. The caller provides the pieces
+     * \PKP\author\DAO::fromRow() produce. The caller may provide the pieces
      * that live outside the authors tables so they can be fetched in
      * batches: the submission locale and the credit/contributor roles
      * (arrays in the formats returned by Repo::creditContributorRole()).
-     * Affiliations come from the eager-loaded relation.
+     * When the role side-maps are null they are derived from the
+     * creditContributorRoles relation instead (batch-loaded via relationship
+     * autoloading in the publication path). Affiliations come from the
+     * eager/auto-loaded relation.
      */
     public function toDataObject(
         ?string $submissionLocale = null,
@@ -160,8 +172,32 @@ class Author extends Model
         $author->setAffiliations(
             $this->affiliations->map(fn (Affiliation $affiliation) => $affiliation->toDataObject($rorObjects))->all()
         );
-        $author->setCreditRoles($creditRoles ?? []);
-        $author->setContributorRoles($contributorRoles ?? []);
+
+        if ($creditRoles === null || $contributorRoles === null) {
+            // Derive the role side-maps from the relation, reproducing the
+            // formats of Repo::creditContributorRole():
+            // getCreditRolesByContributorId() returns rows of
+            // ['role' => identifier, 'degree' => degree], in row order;
+            // getContributorRolesByContributorId() returns ContributorRole
+            // models ordered by contributor_role_id
+            $roleLinks = $this->creditContributorRoles;
+            $creditRoles ??= $roleLinks
+                ->filter(fn (CreditContributorRole $link) => $link->creditRoleId !== null)
+                ->map(fn (CreditContributorRole $link) => [
+                    'role' => $link->creditRole?->creditRoleIdentifier,
+                    'degree' => $link->creditDegree,
+                ])
+                ->values()
+                ->all();
+            $contributorRoles ??= $roleLinks
+                ->filter(fn (CreditContributorRole $link) => $link->contributorRoleId !== null)
+                ->sortBy('contributorRoleId')
+                ->map(fn (CreditContributorRole $link) => $link->contributorRole)
+                ->values()
+                ->all();
+        }
+        $author->setCreditRoles($creditRoles);
+        $author->setContributorRoles($contributorRoles);
 
         return $author;
     }

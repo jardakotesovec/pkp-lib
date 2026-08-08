@@ -18,7 +18,10 @@ use Eloquence\Behaviours\HasCamelCasing;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Casts\Attribute;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Query\JoinClause;
+use PKP\author\contributorRole\ContributorRole;
+use PKP\author\creditRole\CreditRole;
 
 class CreditContributorRole extends Model
 {
@@ -69,6 +72,22 @@ class CreditContributorRole extends Model
             get: fn ($value, $attributes) => $attributes[$this->primaryKey] ?? null,
             set: fn ($value) => [$this->primaryKey => $value],
         )->shouldCache();
+    }
+
+    /**
+     * The CRediT role this link points to, if it is a credit role link.
+     */
+    public function creditRole(): BelongsTo
+    {
+        return $this->belongsTo(CreditRole::class, 'credit_role_id', 'credit_role_id');
+    }
+
+    /**
+     * The contributor role this link points to, if it is a contributor role link.
+     */
+    public function contributorRole(): BelongsTo
+    {
+        return $this->belongsTo(ContributorRole::class, 'contributor_role_id', 'contributor_role_id');
     }
 
     /**

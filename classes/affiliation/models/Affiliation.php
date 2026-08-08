@@ -20,8 +20,10 @@ namespace PKP\affiliation\models;
 use APP\facades\Repo;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Arr;
 use PKP\core\traits\ModelWithSettings;
+use PKP\ror\models\Ror;
 
 class Affiliation extends Model
 {
@@ -72,14 +74,25 @@ class Affiliation extends Model
     }
 
     /**
+     * The ROR registry record this affiliation links to, matched on the
+     * ror uri string. Named rorRecord so it does not collide with the
+     * 'ror' string attribute.
+     */
+    public function rorRecord(): BelongsTo
+    {
+        return $this->belongsTo(Ror::class, 'ror', 'ror');
+    }
+
+    /**
      * Bridge to the DataObject representation. Mirrors what
      * EntityDAO::fromRow() + \PKP\affiliation\DAO::fromRow() produce,
      * including the rorObject attach for ROR-linked affiliations.
      *
      * @param ?array $rorObjects optional batch-fetched map of ror uri =>
      *   \PKP\ror\Ror DataObject (missing keys mean the uri is not in the
-     *   registry table). When null, ROR-linked affiliations fall back to
-     *   the legacy per-object lookup.
+     *   registry table). When null, ROR-linked affiliations use the
+     *   rorRecord relation (batch-loaded via relationship autoloading in
+     *   the publication path).
      */
     public function toDataObject(?array $rorObjects = null): \PKP\affiliation\Affiliation
     {
@@ -100,7 +113,7 @@ class Affiliation extends Model
                 'rorObject',
                 $rorObjects !== null
                     ? ($rorObjects[$this->ror] ?? null)
-                    : Repo::ror()->getCollector()->filterByRor($this->ror)->getMany()->first()
+                    : $this->rorRecord?->toDataObject()
             );
         }
         return $affiliation;
