@@ -22,6 +22,7 @@
 
 namespace PKP\galley\models;
 
+use APP\facades\Repo;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Arr;
@@ -78,6 +79,38 @@ class Galley extends Model
     public function getMultilingualProps(): array
     {
         return [];
+    }
+
+    /**
+     * Bridge to the DataObject representation used by templates, hooks and
+     * the rest of the application. Field conversions mirror what
+     * EntityDAO::fromRow() + \PKP\galley\DAO::fromRow() produce for the same
+     * row (galley.json declares seq as integer, hence the cast).
+     */
+    public function toDataObject(): \PKP\galley\Galley
+    {
+        $galley = Repo::galley()->newDataObject();
+        $galley->setAllData([
+            'id' => $this->galleyId,
+            'locale' => $this->locale,
+            'label' => $this->label,
+            'publicationId' => $this->publicationId,
+            'seq' => (int) $this->seq,
+            'submissionFileId' => $this->submissionFileId,
+            'urlRemote' => $this->remoteUrl,
+            'isApproved' => $this->isApproved,
+            'urlPath' => $this->urlPath,
+            'doiId' => $this->doiId,
+        ]);
+        $attributes = $this->getAttributes();
+        $publisherId = $attributes['pub-id::publisher-id'] ?? $attributes['pubId::publisherId'] ?? null;
+        if ($publisherId !== null) {
+            $galley->setData('pub-id::publisher-id', $publisherId);
+        }
+        if (!empty($this->doiId)) {
+            $galley->setData('doiObject', Repo::doi()->get($this->doiId));
+        }
+        return $galley;
     }
 
     /**
