@@ -78,6 +78,13 @@ class AppServiceProvider extends ServiceProvider
         // app_env = 'development'
         Model::preventLazyLoading(!app()->isProduction());
 
+        // Development-only query counting; see DevQueryLog for the environment variables.
+        // Deferred until the database manager is resolved, which happens after all
+        // service providers are registered.
+        if ($queryLogFile = getenv('PKP_QUERY_LOG')) {
+            $this->app->afterResolving('db', fn () => DevQueryLog::register($queryLogFile));
+        }
+
         Relation::enforceMorphMap([
             PKPApplication::ASSOC_TYPE_QUERY => EditorialTask::class,
         ]);
