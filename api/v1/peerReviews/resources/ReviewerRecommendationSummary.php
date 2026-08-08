@@ -16,6 +16,7 @@
 
 namespace PKP\API\v1\peerReviews\resources;
 
+use APP\core\Application;
 use APP\facades\Repo;
 use APP\publication\Publication;
 use APP\submission\Submission;
@@ -30,6 +31,39 @@ use PKP\submission\reviewRound\ReviewRoundDAO;
 
 trait ReviewerRecommendationSummary
 {
+    /** @var Enumerable|null Reviewer recommendations of the submission's context, keyed by recommendation id (memoized) */
+    private ?Enumerable $availableReviewerRecommendations = null;
+
+    /**
+     * Get the context for the given context id, reusing the current request's
+     * context when it is the same one to avoid re-fetching it from the database.
+     * These resources also serve API routes for other contexts, so the id guard
+     * matters: when the ids differ, the context is still fetched by id.
+     */
+    private function getContextById(int $contextId): Context
+    {
+        $request = Application::get()->getRequest();
+        $requestContext = $request->getRouter() ? $request->getContext() : null;
+        if ($requestContext && (int) $requestContext->getId() === $contextId) {
+            return $requestContext;
+        }
+
+        /** @var Context */
+        return Application::getContextDAO()->getById($contextId);
+    }
+
+    /**
+     * Get the reviewer recommendations configured for the given context, keyed by
+     * recommendation id. Memoized: within one resource the same set is needed both
+     * for the per-review data and the recommendations summary.
+     */
+    private function getAvailableReviewerRecommendations(Context $context): Enumerable
+    {
+        return $this->availableReviewerRecommendations ??= ReviewerRecommendation::withContextId($context->getId())
+            ->get()
+            ->keyBy('reviewerRecommendationId');
+    }
+
     /**
      * Get the review rounds that are part of the public peer review record.
      * Only rounds whose reviewed publication version is published are included;
@@ -76,9 +110,7 @@ trait ReviewerRecommendationSummary
     {
         $responses = collect();
 
-        $availableRecommendationTypes = ReviewerRecommendation::withContextId($context->getId())
-            ->get()
-            ->keyBy('reviewerRecommendationId');
+        $availableRecommendationTypes = $this->getAvailableReviewerRecommendations($context);
 
         foreach ($reviewAssignmentsGroupedByRoundId as $reviews) {
             /** @var ReviewAssignment $review */

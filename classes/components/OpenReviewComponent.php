@@ -28,11 +28,27 @@ class OpenReviewComponent
 
     public function __construct(Submission $submission)
     {
-        $this->submissionPeerReviews = (new SubmissionPeerReviewResource($submission))
-            ->resolve();
+        $submissionPeerReviewResource = new SubmissionPeerReviewResource($submission);
+        $this->submissionPeerReviews = $submissionPeerReviewResource->resolve();
 
-        $this->submissionPeerReviewSummary = (new SubmissionPeerReviewSummaryResource($submission))
-            ->resolve();
+        $submissionPeerReviewSummaryResource = new SubmissionPeerReviewSummaryResource($submission);
+
+        // Both resources describe the same submission, so the summary can reuse the
+        // review rounds, review assignments, context and reviewer recommendations
+        // the full peer review resource just fetched instead of re-fetching them
+        $publicReviewRounds = $submissionPeerReviewResource->getComputedPublicReviewRounds();
+        $reviewAssignments = $submissionPeerReviewResource->getComputedReviewAssignments();
+        $context = $submissionPeerReviewResource->getComputedContext();
+        if ($publicReviewRounds !== null && $reviewAssignments !== null && $context !== null) {
+            $submissionPeerReviewSummaryResource->withPrecomputed(
+                $publicReviewRounds,
+                $reviewAssignments,
+                $context,
+                $submissionPeerReviewResource->getComputedAvailableReviewerRecommendations()
+            );
+        }
+
+        $this->submissionPeerReviewSummary = $submissionPeerReviewSummaryResource->resolve();
     }
 
     /**

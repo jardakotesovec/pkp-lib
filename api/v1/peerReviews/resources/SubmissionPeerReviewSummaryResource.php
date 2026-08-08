@@ -16,7 +16,6 @@
 
 namespace PKP\API\v1\peerReviews\resources;
 
-use APP\core\Application;
 use APP\facades\Repo;
 use APP\submission\Submission;
 use Illuminate\Http\Request;
@@ -32,6 +31,40 @@ class SubmissionPeerReviewSummaryResource extends JsonResource
 {
     use ReviewerRecommendationSummary;
 
+    /** @var Collection<int, ReviewRound>|null Public review rounds precomputed by a caller, see withPrecomputed() */
+    private ?Collection $precomputedPublicReviewRounds = null;
+
+    /** @var Collection<int, ReviewAssignment>|null Review assignments precomputed by a caller, see withPrecomputed() */
+    private ?Collection $precomputedReviewAssignments = null;
+
+    /** @var Context|null Context precomputed by a caller, see withPrecomputed() */
+    private ?Context $precomputedContext = null;
+
+    /**
+     * Reuse data a SubmissionPeerReviewResource already computed for the same
+     * submission (e.g. when both resources are rendered within one page view),
+     * avoiding duplicate fetches. All values must belong to the same submission
+     * this resource wraps; when not called, the resource fetches everything itself.
+     *
+     * @param Collection<int, ReviewRound> $publicReviewRounds Public review rounds keyed by review round id
+     * @param Collection<int, ReviewAssignment> $reviewAssignments Accepted, publicly visible review assignments of those rounds
+     * @param Context $context The submission's context
+     * @param ?Enumerable $availableReviewerRecommendations The context's reviewer recommendations keyed by recommendation id
+     */
+    public function withPrecomputed(
+        Collection $publicReviewRounds,
+        Collection $reviewAssignments,
+        Context $context,
+        ?Enumerable $availableReviewerRecommendations = null
+    ): static {
+        $this->precomputedPublicReviewRounds = $publicReviewRounds;
+        $this->precomputedReviewAssignments = $reviewAssignments;
+        $this->precomputedContext = $context;
+        $this->availableReviewerRecommendations = $availableReviewerRecommendations;
+
+        return $this;
+    }
+
     public function toArray(Request $request)
     {
         /** @var Submission $submission */
@@ -39,19 +72,19 @@ class SubmissionPeerReviewSummaryResource extends JsonResource
 
         // Summarize only what the full peer review record exposes: reviews from
         // rounds whose reviewed publication version is published
-        $publicReviewRounds = $this->getPublicReviewRounds($submission);
+        $publicReviewRounds = $this->precomputedPublicReviewRounds ?? $this->getPublicReviewRounds($submission);
         $roundIds = $publicReviewRounds->keys()->all();
 
-        $reviewAssignments = empty($roundIds) ? collect() : Repo::reviewAssignment()->getCollector()
-            ->filterByReviewRoundIds($roundIds)
-            ->filterByIsPubliclyVisible(true)
-            ->filterByIsAccepted(true)
-            ->getMany()
-            ->collect();
+        $reviewAssignments = $this->precomputedReviewAssignments
+            ?? (empty($roundIds) ? collect() : Repo::reviewAssignment()->getCollector()
+                ->filterByReviewRoundIds($roundIds)
+                ->filterByIsPubliclyVisible(true)
+                ->filterByIsAccepted(true)
+                ->getMany()
+                ->collect());
 
-        $contextDao = Application::getContextDAO();
         /** @var Context $context */
-        $context = $contextDao->getById($submission->getData('contextId'));
+        $context = $this->precomputedContext ?? $this->getContextById((int) $submission->getData('contextId'));
 
         return [
             'submissionId' => $submission->getId(),

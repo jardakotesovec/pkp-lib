@@ -46,7 +46,14 @@ class SubmissionPeerReviewResource extends JsonResource
 {
     use ReviewerRecommendationSummary;
 
-    private ?Enumerable $availableReviewerRecommendations = null;
+    /** @var Collection<int, ReviewRound>|null Public review rounds computed during toArray(), reusable by a summary resource for the same submission */
+    private ?Collection $computedPublicReviewRounds = null;
+
+    /** @var Collection<int, ReviewAssignment>|null Review assignments fetched during toArray(), reusable by a summary resource for the same submission */
+    private ?Collection $computedReviewAssignments = null;
+
+    /** @var Context|null Context resolved during toArray(), reusable by a summary resource for the same submission */
+    private ?Context $computedContext = null;
 
     /** @var Collection<int, ReviewForm>|null Caches review forms to avoid redundant fetches */
     private ?Collection $reviewFormsCache = null;
@@ -65,19 +72,18 @@ class SubmissionPeerReviewResource extends JsonResource
         /** @var Submission $submission */
         $submission = $this->resource;
 
-        $contextDao = Application::getContextDAO();
         /** @var Context $context */
-        $context = $contextDao->getById($submission->getData('contextId'));
+        $context = $this->computedContext = $this->getContextById((int) $submission->getData('contextId'));
 
         /** @var Collection<int, Publication> $publishedPublications */
         $publishedPublications = collect($submission->getPublishedPublications())
             ->keyBy(fn (Publication $publication) => $publication->getId());
 
-        $reviewRounds = $this->getPublicReviewRounds($submission);
+        $reviewRounds = $this->computedPublicReviewRounds = $this->getPublicReviewRounds($submission);
         $roundIds = $reviewRounds->keys()->all();
 
         // Get all accepted review assignments. Confirmed ones will be filtered and exposed to peer review API, while all reviews will be considered for summary.
-        $reviewAssignments = empty($roundIds) ? collect() : Repo::reviewAssignment()
+        $reviewAssignments = $this->computedReviewAssignments = empty($roundIds) ? collect() : Repo::reviewAssignment()
             ->getCollector()
             ->filterByReviewRoundIds($roundIds)
             ->filterByIsPubliclyVisible(true)
@@ -147,6 +153,46 @@ class SubmissionPeerReviewResource extends JsonResource
     }
 
     /**
+     * Get the public review rounds computed by toArray(), keyed by review round id.
+     * Null until the resource has been resolved. Exposed so a caller rendering the
+     * peer review summary for the same submission can reuse them.
+     *
+     * @return Collection<int, ReviewRound>|null
+     */
+    public function getComputedPublicReviewRounds(): ?Collection
+    {
+        return $this->computedPublicReviewRounds;
+    }
+
+    /**
+     * Get the accepted, publicly visible review assignments fetched by toArray().
+     * Null until the resource has been resolved.
+     *
+     * @return Collection<int, ReviewAssignment>|null
+     */
+    public function getComputedReviewAssignments(): ?Collection
+    {
+        return $this->computedReviewAssignments;
+    }
+
+    /**
+     * Get the context resolved by toArray(). Null until the resource has been resolved.
+     */
+    public function getComputedContext(): ?Context
+    {
+        return $this->computedContext;
+    }
+
+    /**
+     * Get the context's reviewer recommendations fetched by toArray(), keyed by
+     * recommendation id. Null until the resource has been resolved.
+     */
+    public function getComputedAvailableReviewerRecommendations(): ?Enumerable
+    {
+        return $this->availableReviewerRecommendations;
+    }
+
+    /**
      * Resolve the DOI of the reviewed publication version, mirroring how the article page
      * resolves it: the version's own DOI, then the shared DOI of its sibling minor versions
      * when DOI versioning is enabled, otherwise the submission's current DOI.
@@ -176,7 +222,7 @@ class SubmissionPeerReviewResource extends JsonResource
      */
     private function getReviewAssignmentPeerReviews(Enumerable $assignments, Context $context): Enumerable
     {
-        $this->availableReviewerRecommendations = $this->availableReviewerRecommendations ?: ReviewerRecommendation::withContextId($context->getId())->get()->keyBy('reviewerRecommendationId');
+        $this->getAvailableReviewerRecommendations($context);
         $recommendationTypesTypeLabels = Repo::reviewerRecommendation()->getRecommendationTypeLabels();
 
         // Preload all review form data for use in class
