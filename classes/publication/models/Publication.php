@@ -35,6 +35,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\LazyCollection;
 use PKP\author\models\Author;
 use PKP\controlledVocab\ControlledVocab;
+use PKP\controlledVocab\ControlledVocabEntry;
 use PKP\core\traits\ModelWithSettings;
 use PKP\dataCitation\DataCitation;
 use PKP\funder\Funder;
@@ -93,6 +94,13 @@ class Publication extends Model
 
     /** Map of schema property name => JSON-schema type, computed once */
     protected static ?array $schemaPropTypes = null;
+
+    /**
+     * Per-run cache of contexts by id for the unassigned-version string in
+     * toDataObject(): at most one context fetch per distinct context instead
+     * of one submission + one context fetch per publication.
+     */
+    protected static array $contextsById = [];
 
     protected function casts(): array
     {
@@ -183,8 +191,12 @@ class Publication extends Model
      * @param ?string $submissionLocale the submission's locale; the caller
      *   usually knows it, otherwise it is fetched as the legacy collector
      *   query does
+     * @param ?int $submissionContextId the submission's context id; when
+     *   provided, the unassigned-version string is built from a per-run
+     *   cached context instead of getVersionString()'s per-publication
+     *   submission + context refetch. When null, the legacy lookup runs.
      */
-    public function toDataObject(?string $submissionLocale = null): \APP\publication\Publication
+    public function toDataObject(?string $submissionLocale = null, ?int $submissionContextId = null): \APP\publication\Publication
     {
         $attributes = $this->getAttributes();
         $propTypes = static::schemaPropTypes();
@@ -252,7 +264,19 @@ class Publication extends Model
             }
         });
 
-        $publication->setData('versionString', Repo::publication()->getVersionString($publication));
+        // Version string, as \PKP\publication\DAO::fromRow(). When the
+        // version stage is unassigned, getVersionString() needs the
+        // submission's context for the date format; resolve it by the
+        // provided context id through the per-run cache — the same context
+        // getVersionString() would fetch by the submission's contextId —
+        // and pass it in, avoiding the per-publication submission + context
+        // refetch. Without a context id the legacy lookup runs unchanged.
+        $versionContext = null;
+        if ($submissionContextId !== null && $publication->getVersion() === null) {
+            $versionContext = self::$contextsById[$submissionContextId]
+                ??= app()->get('context')->get($submissionContextId);
+        }
+        $publication->setData('versionString', Repo::publication()->getVersionString($publication, null, $versionContext));
 
         // Contributors from the authors relation, keyed by author id like
         // the legacy collector-backed LazyCollection set by setAuthors()
@@ -271,21 +295,38 @@ class Publication extends Model
             PublicationCategory::withPublicationId($publicationId)->pluck('category_id')->toArray()
         );
 
-        // Controlled vocabulary, as \PKP\publication\DAO::setControlledVocab()
-        foreach ([
+        // Controlled vocabulary, as \PKP\publication\DAO::setControlledVocab(),
+        // batched: one query for the four controlled_vocabs rows plus one
+        // entries ->get() (rows + settings) covering all of them, instead of
+        // four getBySymbolic() calls at two queries each. Each property is
+        // built exactly as \PKP\controlledVocab\Repository::getBySymbolic()
+        // builds it (per-locale arrays of getEntryData(), in entry retrieval
+        // order), and a vocab with no row or no entries yields the same
+        // empty array getBySymbolic() returns for it.
+        $vocabProps = [
             'keywords' => ControlledVocab::CONTROLLED_VOCAB_SUBMISSION_KEYWORD,
             'subjects' => ControlledVocab::CONTROLLED_VOCAB_SUBMISSION_SUBJECT,
             'disciplines' => ControlledVocab::CONTROLLED_VOCAB_SUBMISSION_DISCIPLINE,
             'supportingAgencies' => ControlledVocab::CONTROLLED_VOCAB_SUBMISSION_AGENCY,
-        ] as $prop => $symbolic) {
-            $publication->setData(
-                $prop,
-                Repo::controlledVocab()->getBySymbolic(
-                    $symbolic,
-                    Application::ASSOC_TYPE_PUBLICATION,
-                    $publicationId
-                )
-            );
+        ];
+        $vocabIdToSymbolic = ControlledVocab::query()
+            ->withSymbolics(array_values($vocabProps))
+            ->withAssoc(Application::ASSOC_TYPE_PUBLICATION, $publicationId)
+            ->pluck('symbolic', 'controlled_vocab_id');
+        $entriesBySymbolic = $vocabIdToSymbolic->isEmpty()
+            ? collect()
+            : ControlledVocabEntry::query()
+                ->whereIn('controlled_vocab_id', $vocabIdToSymbolic->keys())
+                ->get()
+                ->groupBy(fn (ControlledVocabEntry $entry) => $vocabIdToSymbolic[$entry->controlledVocabId]);
+        foreach ($vocabProps as $prop => $symbolic) {
+            $result = [];
+            foreach ($entriesBySymbolic->get($symbolic, collect()) as $entry) {
+                foreach ($entry->name as $locale => $value) {
+                    $result[$locale][] = $entry->getEntryData($locale);
+                }
+            }
+            $publication->setData($prop, $result);
         }
 
         // Data citations, as \PKP\publication\DAO::setDataCitations()
