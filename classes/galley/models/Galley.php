@@ -25,8 +25,11 @@ namespace PKP\galley\models;
 use APP\facades\Repo;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\LazyLoadingViolationException;
 use Illuminate\Support\Arr;
 use PKP\core\traits\ModelWithSettings;
+use PKP\submissionFile\models\SubmissionFile;
 
 class Galley extends Model
 {
@@ -82,10 +85,40 @@ class Galley extends Model
     }
 
     /**
+     * The galley's submission file, fetched with the joined columns
+     * (files.path, files.mimetype, submissions.locale) the legacy collector
+     * query selects, so toDataObject() on the related model reproduces
+     * Repo::submissionFile()->get() exactly. The scope survives eager
+     * loading and relationship autoloading: the eager constraint is the
+     * qualified `submission_files.submission_file_id IN (...)`, which the
+     * joins leave unambiguous.
+     */
+    public function file(): BelongsTo
+    {
+        return $this->belongsTo(SubmissionFile::class, 'submission_file_id', 'submission_file_id')
+            ->withFileAndLocale();
+    }
+
+    /**
      * Bridge to the DataObject representation used by templates, hooks and
      * the rest of the application. Field conversions mirror what
      * EntityDAO::fromRow() + \PKP\galley\DAO::fromRow() produce for the same
      * row (galley.json declares seq as integer, hence the cast).
+     *
+     * When the file relation is already loaded — or can be batch-loaded via
+     * relationship autoloading — the DataObject's public $_submissionFile
+     * memo is preloaded from it, so template-time getFile()/isPdfGalley()
+     * calls cost no per-galley queries. Otherwise the property is left
+     * untouched and the legacy lazy Repo::submissionFile()->get() behavior
+     * applies.
+     *
+     * Missing-file semantics: a galley without a submissionFileId gets no
+     * preload (getFile() guards on the id and returns null without a query).
+     * A galley whose file row cannot be resolved (relation value null) also
+     * gets no preload — and preloading null would be observably identical
+     * anyway: the legacy memo check is isset($this->_submissionFile), and
+     * isset(null) is false, so legacy getFile() re-fetches on every call for
+     * a missing file whether or not null was ever assigned to the property.
      */
     public function toDataObject(): \PKP\galley\Galley
     {
@@ -110,6 +143,30 @@ class Galley extends Model
         if (!empty($this->doiId)) {
             $galley->setData('doiObject', Repo::doi()->get($this->doiId));
         }
+
+        // Preload the DataObject's submission file memo from the relation
+        // when it is resolvable without a stray per-galley query: either the
+        // relation is already loaded, or a relationship-autoload callback is
+        // registered (the wired path — accessing the relation then
+        // batch-loads it for every galley in the autoload context at once).
+        // Without either, the property is left untouched so the legacy lazy
+        // fetch keeps working, and the plain (non-autoloaded) model path
+        // never degrades into a hidden N+1. The try/catch covers lazy-
+        // loading prevention modes where access would throw instead of load.
+        $fileModel = null;
+        if ($this->relationLoaded('file')) {
+            $fileModel = $this->getRelation('file');
+        } elseif ($this->hasRelationAutoloadCallback()) {
+            try {
+                $fileModel = $this->file;
+            } catch (LazyLoadingViolationException) {
+                $fileModel = null;
+            }
+        }
+        if ($fileModel !== null) {
+            $galley->_submissionFile = $fileModel->toDataObject();
+        }
+
         return $galley;
     }
 
