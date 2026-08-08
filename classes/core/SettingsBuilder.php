@@ -348,8 +348,11 @@ class SettingsBuilder extends Builder
             $rowIndexesById[$row->{$primaryKey}][] = $index;
         }
 
+        // whereIntegerInRaw inlines the ids instead of binding one parameter
+        // each, like Eloquent's own eager loading does; a bound whereIn hits
+        // the 65535-parameter driver limit on large result sets
         $settings = DB::table($this->model->getSettingsTable())
-            ->whereIn($primaryKey, $uniqueIds)
+            ->whereIntegerInRaw($primaryKey, $uniqueIds)
             ->get();
 
         $settings->each(function (stdClass $setting) use (&$rows, $rowIndexesById, $primaryKey) {
