@@ -21,6 +21,7 @@ use PKP\db\DBResultRange;
 use PKP\plugins\Hook;
 use PKP\plugins\PluginFailureHandler;
 use PKP\publication\PKPPublication;
+use PKP\submission\models\Submission as SubmissionModel;
 use PKP\submission\PKPSubmission;
 
 class SubmissionSearchResult
@@ -94,13 +95,22 @@ class SubmissionSearchResult
         Hook::call('SubmissionSearchResult::newCollection', [$models, &$itemDecorators]);
 
         $collection = LazyCollection::make(function () use ($models, &$contextCache, &$sectionCache) {
+            // $models is the current result page (Scout's paginate()/
+            // simplePaginate() map the page items into newCollection), so the
+            // id list is bounded by the page size. Batch-hydrate the whole
+            // page in ranking order: one submissions fetch + one settings
+            // fetch + one publications batch, with authors/galleys/files
+            // batching across every result through the shared relationship-
+            // autoload context, instead of ~22 queries per result from the
+            // per-id Repo::submission()->get() loop. Ids missing from the
+            // database are skipped by hydrateMany(), matching the previous
+            // `if (!$submission) continue` behavior.
+            $submissionIds = [];
             foreach ($models as $data) {
-                $submissionId = is_scalar($data) ? (int) $data : (int) $data->submissionId;
-                $submission = Repo::submission()->get($submissionId);
-                if (!$submission) {
-                    continue;
-                }
+                $submissionIds[] = is_scalar($data) ? (int) $data : (int) $data->submissionId;
+            }
 
+            foreach (SubmissionModel::hydrateMany($submissionIds) as $submission) {
                 $currentPublication = $submission->getCurrentPublication();
                 if ($currentPublication->getData('status') != PKPPublication::STATUS_PUBLISHED) {
                     continue;
