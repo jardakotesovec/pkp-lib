@@ -29,15 +29,19 @@ use APP\facades\Repo;
 use APP\publication\enums\VersionStage;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\LazyLoadingViolationException;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\LazyCollection;
 use PKP\author\models\Author;
+use PKP\citation\models\Citation as CitationModel;
 use PKP\controlledVocab\ControlledVocab;
 use PKP\controlledVocab\ControlledVocabEntry;
 use PKP\core\traits\ModelWithSettings;
 use PKP\dataCitation\DataCitation;
+use PKP\doi\models\Doi as DoiModel;
 use PKP\funder\Funder;
 use PKP\galley\models\Galley;
 use PKP\publication\PublicationCategory;
@@ -186,6 +190,84 @@ class Publication extends Model
     }
 
     /**
+     * The publication's DOI
+     */
+    public function doi(): BelongsTo
+    {
+        return $this->belongsTo(DoiModel::class, 'doi_id', 'doi_id');
+    }
+
+    /**
+     * Citations of this publication, in the seq-asc order of the legacy
+     * citation collector. Legacy has no explicit tiebreak (the corpus has
+     * no equal-seq citations); make it deterministic here with the id.
+     */
+    public function citations(): HasMany
+    {
+        return $this->hasMany(CitationModel::class, 'publication_id', 'publication_id')
+            ->orderBy('seq')
+            ->orderBy('citation_id');
+    }
+
+    /**
+     * Category assignments of this publication. The legacy pluck runs with
+     * no ORDER BY; make the relation deterministic with the id.
+     */
+    public function categories(): HasMany
+    {
+        return $this->hasMany(PublicationCategory::class, 'publication_id', 'publication_id')
+            ->orderBy('publication_category_id');
+    }
+
+    /**
+     * The publication's controlled vocabularies (keywords, subjects,
+     * disciplines, supporting agencies). The entries come through the
+     * nested controlledVocabEntries relation, which relationship
+     * autoloading batches across every vocab of every publication in the
+     * autoload context. Like the legacy getBySymbolic() query, the entries
+     * relation carries no ORDER BY: the legacy per-vocab entry order is
+     * planner-driven (heap order, which on the corpus is NOT id order),
+     * and an unordered scan reproduces it per vocab id.
+     */
+    public function controlledVocabs(): HasMany
+    {
+        return $this->hasMany(ControlledVocab::class, 'assoc_id', 'publication_id')
+            ->where('assoc_type', Application::ASSOC_TYPE_PUBLICATION)
+            ->whereIn('symbolic', [
+                ControlledVocab::CONTROLLED_VOCAB_SUBMISSION_KEYWORD,
+                ControlledVocab::CONTROLLED_VOCAB_SUBMISSION_SUBJECT,
+                ControlledVocab::CONTROLLED_VOCAB_SUBMISSION_DISCIPLINE,
+                ControlledVocab::CONTROLLED_VOCAB_SUBMISSION_AGENCY,
+            ]);
+    }
+
+    /**
+     * Data citations of this publication, in the legacy orderBySeq() order.
+     * Legacy has no explicit tiebreak; the corpus shows equal-seq rows come
+     * back in id order, so make that deterministic here.
+     */
+    public function dataCitations(): HasMany
+    {
+        return $this->hasMany(DataCitation::class, 'publication_id', 'publication_id')
+            ->orderBy('seq')
+            ->orderBy('data_citation_id');
+    }
+
+    /**
+     * Funders of the publication's submission, in the legacy orderBySeq()
+     * order (seq with funder_id tiebreak). Keyed by submission_id on both
+     * sides: version siblings share the same funder rows, and under
+     * relationship autoloading they receive the SAME Funder model
+     * instances — acceptable for read-only bridging.
+     */
+    public function funders(): HasMany
+    {
+        return $this->hasMany(Funder::class, 'submission_id', 'submission_id')
+            ->orderBy('seq')
+            ->orderBy('funder_id');
+    }
+
+    /**
      * Bridge to the DataObject representation used by templates, hooks and
      * the rest of the application. Reproduces everything the legacy
      * hydration path produces: EntityDAO::fromRow() conversions,
@@ -242,9 +324,27 @@ class Publication extends Model
             }
         }
 
-        // DOI object, as \PKP\publication\DAO::setDoiObject()
+        // DOI object, as \PKP\publication\DAO::setDoiObject(). When the doi
+        // relation is loaded — or batch-loadable via relationship
+        // autoloading — the DataObject comes from the read model bridge;
+        // otherwise the legacy per-publication fetch runs unchanged.
         if (!empty($publication->getData('doiId'))) {
-            $publication->setData('doiObject', Repo::doi()->get($publication->getData('doiId')));
+            $doiModel = null;
+            if ($this->relationLoaded('doi')) {
+                $doiModel = $this->getRelation('doi');
+            } elseif ($this->hasRelationAutoloadCallback()) {
+                try {
+                    $doiModel = $this->doi;
+                } catch (LazyLoadingViolationException) {
+                    $doiModel = null;
+                }
+            }
+            $publication->setData(
+                'doiObject',
+                $doiModel
+                    ? $doiModel->toDataObject()
+                    : Repo::doi()->get($publication->getData('doiId'))
+            );
         }
 
         // Set the primary locale from the submission; the legacy collector
@@ -256,14 +356,46 @@ class Publication extends Model
 
         $publicationId = $publication->getId();
 
-        $citations = Repo::citation()->getByPublicationId($publicationId);
-        $publication->setData('citations', $citations);
-        $publication->setData('citationsRaw', new class ($publicationId) implements \Stringable {
-            public function __construct(public int $publicationId)
+        // Citations, as \PKP\publication\DAO::fromRow(): a remembered
+        // LazyCollection keyed by citation id in seq-asc order, so citations
+        // that are never touched still cost zero queries. When first
+        // iterated, the citations relation is used if it is loaded — or
+        // batch-loadable via relationship autoloading — and the legacy
+        // collector fetch runs unchanged otherwise.
+        $publication->setData('citations', LazyCollection::make(function () use ($publicationId) {
+            $models = null;
+            if ($this->relationLoaded('citations')) {
+                $models = $this->getRelation('citations');
+            } elseif ($this->hasRelationAutoloadCallback()) {
+                try {
+                    $models = $this->citations;
+                } catch (LazyLoadingViolationException) {
+                    $models = null;
+                }
+            }
+            if ($models === null) {
+                yield from Repo::citation()->getByPublicationId($publicationId);
+                return;
+            }
+            foreach ($models as $citationModel) {
+                yield $citationModel->citationId => $citationModel->toDataObject();
+            }
+        })->remember());
+        // The raw-citations string derives from the loaded citations
+        // relation when available (same seq-asc order and PHP_EOL implode
+        // as getRawCitationsByPublicationId()); otherwise the legacy query
+        // runs at __toString() time, unchanged.
+        $publication->setData('citationsRaw', new class ($this, $publicationId) implements \Stringable {
+            public function __construct(public Publication $model, public int $publicationId)
             {
             }
             public function __toString()
             {
+                if ($this->model->relationLoaded('citations')) {
+                    return $this->model->getRelation('citations')
+                        ->map(fn (CitationModel $citationModel) => $citationModel->rawCitation)
+                        ->implode(PHP_EOL);
+                }
                 return Repo::citation()->getRawCitationsByPublicationId($this->publicationId)->implode(PHP_EOL);
             }
         });
@@ -293,10 +425,25 @@ class Publication extends Model
             })->remember()
         );
 
-        // Categories, as \PKP\publication\DAO::setCategories()
+        // Categories, as \PKP\publication\DAO::setCategories(). When the
+        // categories relation is loaded — or batch-loadable via relationship
+        // autoloading — the ids come from it; otherwise the legacy
+        // per-publication pluck runs unchanged.
+        $categoryModels = null;
+        if ($this->relationLoaded('categories')) {
+            $categoryModels = $this->getRelation('categories');
+        } elseif ($this->hasRelationAutoloadCallback()) {
+            try {
+                $categoryModels = $this->categories;
+            } catch (LazyLoadingViolationException) {
+                $categoryModels = null;
+            }
+        }
         $publication->setData(
             'categoryIds',
-            PublicationCategory::withPublicationId($publicationId)->pluck('category_id')->toArray()
+            $categoryModels !== null
+                ? $categoryModels->pluck('categoryId')->all()
+                : PublicationCategory::withPublicationId($publicationId)->pluck('category_id')->toArray()
         );
 
         // Controlled vocabulary, as \PKP\publication\DAO::setControlledVocab(),
@@ -307,22 +454,50 @@ class Publication extends Model
         // builds it (per-locale arrays of getEntryData(), in entry retrieval
         // order), and a vocab with no row or no entries yields the same
         // empty array getBySymbolic() returns for it.
+        // When the controlledVocabs relation is loaded — or batch-loadable
+        // via relationship autoloading — the vocab rows and their entries
+        // come from the (nested) relations, batched at both levels across
+        // the autoload context; otherwise the standalone two-query fetch
+        // below runs unchanged. Both paths produce the same
+        // symbolic-grouped entry collections in the same per-vocab order.
         $vocabProps = [
             'keywords' => ControlledVocab::CONTROLLED_VOCAB_SUBMISSION_KEYWORD,
             'subjects' => ControlledVocab::CONTROLLED_VOCAB_SUBMISSION_SUBJECT,
             'disciplines' => ControlledVocab::CONTROLLED_VOCAB_SUBMISSION_DISCIPLINE,
             'supportingAgencies' => ControlledVocab::CONTROLLED_VOCAB_SUBMISSION_AGENCY,
         ];
-        $vocabIdToSymbolic = ControlledVocab::query()
-            ->withSymbolics(array_values($vocabProps))
-            ->withAssoc(Application::ASSOC_TYPE_PUBLICATION, $publicationId)
-            ->pluck('symbolic', 'controlled_vocab_id');
-        $entriesBySymbolic = $vocabIdToSymbolic->isEmpty()
-            ? collect()
-            : ControlledVocabEntry::query()
-                ->whereIn('controlled_vocab_id', $vocabIdToSymbolic->keys())
-                ->get()
-                ->groupBy(fn (ControlledVocabEntry $entry) => $vocabIdToSymbolic[$entry->controlledVocabId]);
+        $entriesBySymbolic = null;
+        $vocabModels = null;
+        if ($this->relationLoaded('controlledVocabs')) {
+            $vocabModels = $this->getRelation('controlledVocabs');
+        } elseif ($this->hasRelationAutoloadCallback()) {
+            try {
+                $vocabModels = $this->controlledVocabs;
+            } catch (LazyLoadingViolationException) {
+                $vocabModels = null;
+            }
+        }
+        if ($vocabModels !== null) {
+            try {
+                $entriesBySymbolic = $vocabModels->mapWithKeys(
+                    fn (ControlledVocab $vocab) => [$vocab->symbolic => $vocab->controlledVocabEntries]
+                );
+            } catch (LazyLoadingViolationException) {
+                $entriesBySymbolic = null;
+            }
+        }
+        if ($entriesBySymbolic === null) {
+            $vocabIdToSymbolic = ControlledVocab::query()
+                ->withSymbolics(array_values($vocabProps))
+                ->withAssoc(Application::ASSOC_TYPE_PUBLICATION, $publicationId)
+                ->pluck('symbolic', 'controlled_vocab_id');
+            $entriesBySymbolic = $vocabIdToSymbolic->isEmpty()
+                ? collect()
+                : ControlledVocabEntry::query()
+                    ->whereIn('controlled_vocab_id', $vocabIdToSymbolic->keys())
+                    ->get()
+                    ->groupBy(fn (ControlledVocabEntry $entry) => $vocabIdToSymbolic[$entry->controlledVocabId]);
+        }
         foreach ($vocabProps as $prop => $symbolic) {
             $result = [];
             foreach ($entriesBySymbolic->get($symbolic, collect()) as $entry) {
@@ -333,24 +508,54 @@ class Publication extends Model
             $publication->setData($prop, $result);
         }
 
-        // Data citations, as \PKP\publication\DAO::setDataCitations()
+        // Data citations, as \PKP\publication\DAO::setDataCitations(): from
+        // the relation when loaded or batch-loadable, otherwise the legacy
+        // per-publication fetch unchanged
+        $dataCitationModels = null;
+        if ($this->relationLoaded('dataCitations')) {
+            $dataCitationModels = $this->getRelation('dataCitations');
+        } elseif ($this->hasRelationAutoloadCallback()) {
+            try {
+                $dataCitationModels = $this->dataCitations;
+            } catch (LazyLoadingViolationException) {
+                $dataCitationModels = null;
+            }
+        }
         $publication->setData(
             'dataCitations',
-            DataCitation::withPublicationId($publicationId)
-                ->orderBySeq()
-                ->get()
-                ->values()
-                ->all()
+            $dataCitationModels !== null
+                ? $dataCitationModels->values()->all()
+                : DataCitation::withPublicationId($publicationId)
+                    ->orderBySeq()
+                    ->get()
+                    ->values()
+                    ->all()
         );
 
-        // Funders, as \PKP\publication\DAO::setFunders()
+        // Funders, as \PKP\publication\DAO::setFunders(): from the relation
+        // when loaded or batch-loadable, otherwise the legacy per-submission
+        // fetch unchanged. Version siblings share the submission's funder
+        // rows; under relationship autoloading they receive the same Funder
+        // model instances, which is fine for read-only bridging.
+        $funderModels = null;
+        if ($this->relationLoaded('funders')) {
+            $funderModels = $this->getRelation('funders');
+        } elseif ($this->hasRelationAutoloadCallback()) {
+            try {
+                $funderModels = $this->funders;
+            } catch (LazyLoadingViolationException) {
+                $funderModels = null;
+            }
+        }
         $publication->setData(
             'funders',
-            Funder::withSubmissionId($publication->getData('submissionId'))
-                ->orderBySeq()
-                ->get()
-                ->values()
-                ->all()
+            $funderModels !== null
+                ? $funderModels->values()->all()
+                : Funder::withSubmissionId($publication->getData('submissionId'))
+                    ->orderBySeq()
+                    ->get()
+                    ->values()
+                    ->all()
         );
 
         // Galleys from the relation, wrapped to match the app-level

@@ -29,6 +29,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\LazyLoadingViolationException;
 use Illuminate\Support\Arr;
 use PKP\core\traits\ModelWithSettings;
+use PKP\doi\models\Doi as DoiModel;
 use PKP\submissionFile\models\SubmissionFile;
 
 class Galley extends Model
@@ -100,6 +101,14 @@ class Galley extends Model
     }
 
     /**
+     * The galley's DOI
+     */
+    public function doi(): BelongsTo
+    {
+        return $this->belongsTo(DoiModel::class, 'doi_id', 'doi_id');
+    }
+
+    /**
      * Bridge to the DataObject representation used by templates, hooks and
      * the rest of the application. Field conversions mirror what
      * EntityDAO::fromRow() + \PKP\galley\DAO::fromRow() produce for the same
@@ -140,8 +149,25 @@ class Galley extends Model
         if ($publisherId !== null) {
             $galley->setData('pub-id::publisher-id', $publisherId);
         }
+        // DOI object, as \PKP\galley\DAO::fromRow(). When the doi relation
+        // is loaded — or batch-loadable via relationship autoloading — the
+        // DataObject comes from the read model bridge; otherwise the legacy
+        // per-galley fetch runs unchanged.
         if (!empty($this->doiId)) {
-            $galley->setData('doiObject', Repo::doi()->get($this->doiId));
+            $doiModel = null;
+            if ($this->relationLoaded('doi')) {
+                $doiModel = $this->getRelation('doi');
+            } elseif ($this->hasRelationAutoloadCallback()) {
+                try {
+                    $doiModel = $this->doi;
+                } catch (LazyLoadingViolationException) {
+                    $doiModel = null;
+                }
+            }
+            $galley->setData(
+                'doiObject',
+                $doiModel ? $doiModel->toDataObject() : Repo::doi()->get($this->doiId)
+            );
         }
 
         // Preload the DataObject's submission file memo from the relation
