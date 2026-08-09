@@ -27,12 +27,16 @@ namespace PKP\citation\models;
 
 use APP\facades\Repo;
 use Illuminate\Database\Eloquent\Model;
+use PKP\core\traits\DataObjectReadCompat;
 use PKP\core\traits\ModelWithSettings;
 use PKP\services\PKPSchemaService;
 
 class Citation extends Model
 {
     use ModelWithSettings;
+    use DataObjectReadCompat {
+        DataObjectReadCompat::getLocalizedData insteadof ModelWithSettings;
+    }
 
     /**
      * Schema properties that never appear as settings rows: computed or
@@ -162,6 +166,60 @@ class Citation extends Model
         }
 
         return $citation;
+    }
+
+    //
+    // EXPERIMENTAL DataObject read-compat surface (see DataObjectReadCompat)
+    //
+
+    /**
+     * @copydoc DataObjectReadCompat::dataObjectCompatConvert()
+     */
+    protected function dataObjectCompatConvert(string $key, mixed $value): mixed
+    {
+        if ($value === null) {
+            return null;
+        }
+        $type = static::schemaPropTypes()[$key] ?? 'string';
+        if (in_array($key, $this->getMultilingualProps())) {
+            $localized = [];
+            foreach ((array) $value as $locale => $raw) {
+                $converted = self::convertFromDb($raw, $type);
+                if ($converted !== null) {
+                    $localized[$locale] = $converted;
+                }
+            }
+            return $localized === [] ? null : $localized;
+        }
+        return self::convertFromDb($value, $type);
+    }
+
+    /**
+     * @copydoc \PKP\citation\Citation::getRawCitation()
+     */
+    public function getRawCitation(): string
+    {
+        return $this->getData('rawCitation');
+    }
+
+    /**
+     * @copydoc \PKP\citation\Citation::getRawCitationWithLinks()
+     */
+    public function getRawCitationWithLinks(): string
+    {
+        $rawCitationWithLinks = $this->getRawCitation();
+        if (stripos($rawCitationWithLinks, '<a href=') === false) {
+            $rawCitationWithLinks = preg_replace_callback(
+                '#(http|https|ftp)://[\d\w\.-]+\.[\w\.]{2,6}[^\s\]\[\<\>]*/?#',
+                function ($matches) {
+                    $trailingDot = in_array($char = substr($matches[0], -1), ['.', ',']);
+                    $url = rtrim($matches[0], '.,');
+                    return "<a href='{$url}' target='_blank'>{$url}</a>" . ($trailingDot ? $char : '');
+                },
+                $rawCitationWithLinks
+            );
+        }
+        return $rawCitationWithLinks;
     }
 
     /**

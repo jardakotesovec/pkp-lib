@@ -102,4 +102,29 @@ class Ror extends Model
     {
         return $query->whereIn('ror', Arr::wrap($rors));
     }
+
+    //
+    // EXPERIMENTAL DataObject read-compat helpers, for direct consumption
+    // by the Affiliation model's getLocalizedName() (see DataObjectReadCompat)
+    //
+
+    /**
+     * @copydoc \PKP\ror\Ror::getDefaultLocale()
+     *
+     * The legacy DataObject falls back on the record's display locale in
+     * the locale precedence; mirror that for the model's
+     * getBestLocalizedData() path.
+     */
+    public function getDefaultLocale(): ?string
+    {
+        return $this->displayLocale;
+    }
+
+    /**
+     * @copydoc \PKP\ror\Ror::getLocalizedName()
+     */
+    public function getLocalizedName(?string $preferredLocale = null): string|null
+    {
+        return $this->getLocalizedData('name', $preferredLocale);
+    }
 }

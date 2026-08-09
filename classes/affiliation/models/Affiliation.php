@@ -22,12 +22,17 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Arr;
+use PKP\core\traits\DataObjectReadCompat;
 use PKP\core\traits\ModelWithSettings;
+use PKP\i18n\LocaleConversion;
 use PKP\ror\models\Ror;
 
 class Affiliation extends Model
 {
     use ModelWithSettings;
+    use DataObjectReadCompat {
+        DataObjectReadCompat::getLocalizedData insteadof ModelWithSettings;
+    }
 
     protected $table = 'author_affiliations';
 
@@ -117,6 +122,47 @@ class Affiliation extends Model
             );
         }
         return $affiliation;
+    }
+
+    //
+    // EXPERIMENTAL DataObject read-compat surface (see DataObjectReadCompat)
+    //
+
+    /**
+     * @copydoc DataObjectReadCompat::dataObjectCompatPseudoProps()
+     */
+    protected function dataObjectCompatPseudoProps(): array
+    {
+        return [
+            'rorObject' => 'compatRorObject',
+        ];
+    }
+
+    /** The live Ror model, only for ROR-linked affiliations (legacy: fromRow guard) */
+    protected function compatRorObject(): ?Ror
+    {
+        return empty($this->ror) ? null : $this->rorRecord;
+    }
+
+    /**
+     * @copydoc \PKP\affiliation\Affiliation::getRor()
+     */
+    public function getRor(): ?string
+    {
+        return $this->getData('ror');
+    }
+
+    /**
+     * @copydoc \PKP\affiliation\Affiliation::getLocalizedName()
+     */
+    public function getLocalizedName(?string $preferredLocale = null): string|null
+    {
+        $rorObject = $this->getData('rorObject');
+        if ($rorObject) {
+            $preferredLocale = $preferredLocale ? LocaleConversion::getIso1FromLocale($preferredLocale) : $preferredLocale;
+            return $rorObject->getLocalizedName($preferredLocale);
+        }
+        return $this->getLocalizedData('name', $preferredLocale);
     }
 
     /**

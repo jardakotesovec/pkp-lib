@@ -28,13 +28,18 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\LazyLoadingViolationException;
 use Illuminate\Support\Arr;
+use PKP\core\traits\DataObjectReadCompat;
 use PKP\core\traits\ModelWithSettings;
 use PKP\doi\models\Doi as DoiModel;
+use PKP\facades\Locale;
 use PKP\submissionFile\models\SubmissionFile;
 
 class Galley extends Model
 {
     use ModelWithSettings;
+    use DataObjectReadCompat {
+        DataObjectReadCompat::getLocalizedData insteadof ModelWithSettings;
+    }
 
     protected $table = 'publication_galleys';
 
@@ -194,6 +199,99 @@ class Galley extends Model
         }
 
         return $galley;
+    }
+
+    //
+    // EXPERIMENTAL DataObject read-compat surface (see DataObjectReadCompat)
+    //
+
+    /**
+     * @copydoc DataObjectReadCompat::dataObjectCompatPseudoProps()
+     */
+    protected function dataObjectCompatPseudoProps(): array
+    {
+        return [
+            // the DataObject prop name differs from the column-derived
+            // attribute name (remote_url)
+            'urlRemote' => 'compatUrlRemote',
+            'doiObject' => 'compatDoiObject',
+        ];
+    }
+
+    /** The remote URL under its DataObject prop name */
+    protected function compatUrlRemote(): ?string
+    {
+        return $this->remoteUrl;
+    }
+
+    /** The DOI model, only when a DOI is assigned (legacy: fromRow guard) */
+    protected function compatDoiObject(): ?DoiModel
+    {
+        return empty($this->doiId) ? null : $this->doi;
+    }
+
+    /**
+     * @copydoc \PKP\galley\Galley::getLabel()
+     */
+    public function getLabel()
+    {
+        return $this->getData('label');
+    }
+
+    /**
+     * @copydoc \PKP\galley\Galley::getLocale()
+     */
+    public function getLocale()
+    {
+        return $this->getData('locale');
+    }
+
+    /**
+     * @copydoc \PKP\galley\Galley::getBestGalleyId()
+     */
+    public function getBestGalleyId()
+    {
+        return strlen($urlPath = (string) $this->getData('urlPath')) ? $urlPath : $this->getId();
+    }
+
+    /**
+     * @copydoc \PKP\galley\Galley::getFile()
+     *
+     * Returns the live SubmissionFile model from the file relation
+     * (batched under relationship autoloading).
+     */
+    public function getFile()
+    {
+        return $this->getData('submissionFileId') ? $this->file : null;
+    }
+
+    /**
+     * @copydoc \PKP\galley\Galley::getFileType()
+     */
+    public function getFileType()
+    {
+        $galleyFile = $this->getFile();
+        return $galleyFile ? $galleyFile->getData('mimetype') : null;
+    }
+
+    /**
+     * @copydoc \PKP\galley\Galley::isPdfGalley()
+     */
+    public function isPdfGalley()
+    {
+        return $this->getFileType() == 'application/pdf';
+    }
+
+    /**
+     * @copydoc \PKP\galley\Galley::getGalleyLabel()
+     */
+    public function getGalleyLabel()
+    {
+        $label = $this->getLabel();
+        if ($this->getLocale() && $this->getLocale() !== Locale::getLocale()) {
+            $label .= ' (' . Locale::getSubmissionLocaleDisplayNames([$this->getLocale()])[$this->getLocale()] . ')';
+        }
+        return $label;
     }
 
     /**

@@ -34,12 +34,16 @@ namespace PKP\submissionFile\models;
 use APP\facades\Repo;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use PKP\core\traits\DataObjectReadCompat;
 use PKP\core\traits\ModelWithSettings;
 use PKP\services\PKPSchemaService;
 
 class SubmissionFile extends Model
 {
     use ModelWithSettings;
+    use DataObjectReadCompat {
+        DataObjectReadCompat::getLocalizedData insteadof ModelWithSettings;
+    }
 
     /**
      * Schema properties that never appear as settings rows: composed or
@@ -156,6 +160,40 @@ class SubmissionFile extends Model
             ));
         }
         return static::$multilingualFromSchema;
+    }
+
+    //
+    // EXPERIMENTAL DataObject read-compat surface (see DataObjectReadCompat)
+    //
+
+    /**
+     * @copydoc DataObjectReadCompat::dataObjectCompatConvert()
+     */
+    protected function dataObjectCompatConvert(string $key, mixed $value): mixed
+    {
+        if ($value === null) {
+            return null;
+        }
+        $type = static::schemaPropTypes()[$key] ?? 'string';
+        if (in_array($key, $this->getMultilingualProps())) {
+            $localized = [];
+            foreach ((array) $value as $locale => $raw) {
+                $converted = self::convertFromDb($raw, $type);
+                if ($converted !== null) {
+                    $localized[$locale] = $converted;
+                }
+            }
+            return $localized === [] ? null : $localized;
+        }
+        return self::convertFromDb($value, $type);
+    }
+
+    /**
+     * @copydoc \PKP\submissionFile\SubmissionFile::getDefaultLocale()
+     */
+    public function getDefaultLocale(): ?string
+    {
+        return $this->getData('submissionLocale');
     }
 
     /**

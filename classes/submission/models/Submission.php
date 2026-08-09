@@ -43,12 +43,17 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\LazyLoadingViolationException;
 use Illuminate\Support\Arr;
 use Illuminate\Support\LazyCollection;
+use PKP\core\traits\DataObjectReadCompat;
 use PKP\core\traits\ModelWithSettings;
 use PKP\services\PKPSchemaService;
+use PKP\submission\PKPSubmission;
 
 class Submission extends Model
 {
     use ModelWithSettings;
+    use DataObjectReadCompat {
+        DataObjectReadCompat::getLocalizedData insteadof ModelWithSettings;
+    }
 
     /**
      * Schema properties that never appear as settings rows: composed or
@@ -175,8 +180,13 @@ class Submission extends Model
      */
     public function publications(): HasMany
     {
+        // chaperone() hydrates the inverse submission() relation on the
+        // loaded publications, so the compat surface's submission-locale
+        // reads (Publication::compatLocale()/getDefaultLocale()) cost no
+        // parent refetch. No extra queries; purely additive for the bridge.
         return $this->hasMany(PublicationModel::class, 'submission_id', 'submission_id')
-            ->orderByVersion();
+            ->orderByVersion()
+            ->chaperone('submission');
     }
 
     /**
@@ -316,6 +326,107 @@ class Submission extends Model
             }
         }
         return $submissions;
+    }
+
+    //
+    // EXPERIMENTAL DataObject read-compat surface (see DataObjectReadCompat)
+    //
+
+    /**
+     * @copydoc DataObjectReadCompat::dataObjectCompatPseudoProps()
+     */
+    protected function dataObjectCompatPseudoProps(): array
+    {
+        return [
+            'publications' => 'compatPublications',
+        ];
+    }
+
+    /**
+     * @copydoc DataObjectReadCompat::dataObjectCompatConvert()
+     *
+     * JSON-schema typed conversion identical to what toDataObject() applies,
+     * so compat reads carry the same values the bridged DataObject would.
+     */
+    protected function dataObjectCompatConvert(string $key, mixed $value): mixed
+    {
+        if ($value === null) {
+            return null;
+        }
+        $type = static::schemaPropTypes()[$key] ?? 'string';
+        if (in_array($key, $this->getMultilingualProps())) {
+            // Match DataObject::setData() semantics: null locale values are
+            // dropped, and a prop with no remaining locales is absent
+            $localized = [];
+            foreach ((array) $value as $locale => $raw) {
+                $converted = self::convertFromDb($raw, $type);
+                if ($converted !== null) {
+                    $localized[$locale] = $converted;
+                }
+            }
+            return $localized === [] ? null : $localized;
+        }
+        return self::convertFromDb($value, $type);
+    }
+
+    /**
+     * Live publication models, orderByVersion() order (legacy: remembered
+     * LazyCollection of Publication DataObjects keyed by publication id)
+     */
+    protected function compatPublications(): mixed
+    {
+        return $this->publications;
+    }
+
+    /**
+     * @copydoc \PKP\submission\PKPSubmission::getDefaultLocale()
+     */
+    public function getDefaultLocale(): ?string
+    {
+        return $this->getData('locale');
+    }
+
+    /**
+     * @copydoc \PKP\submission\PKPSubmission::getBestId()
+     */
+    public function getBestId()
+    {
+        return strlen($urlPath = (string) $this->getCurrentPublication()?->getData('urlPath')) ? $urlPath : $this->getId();
+    }
+
+    /**
+     * @copydoc \PKP\submission\PKPSubmission::getCurrentPublication()
+     *
+     * @return PublicationModel|null
+     */
+    public function getCurrentPublication()
+    {
+        $publicationId = $this->getData('currentPublicationId');
+        $publications = $this->getData('publications');
+        if (!$publicationId || empty($publications)) {
+            return null;
+        }
+        foreach ($publications as $publication) {
+            if ($publication->getId() === $publicationId) {
+                return $publication;
+            }
+        }
+    }
+
+    /**
+     * @copydoc \PKP\submission\PKPSubmission::getPublishedPublications()
+     *
+     * @return PublicationModel[]
+     */
+    public function getPublishedPublications()
+    {
+        $publications = $this->getData('publications') ?? collect();
+        if ($publications->isEmpty()) {
+            return [];
+        }
+        return $publications->filter(function ($publication) {
+            return $publication->getData('status') === PKPSubmission::STATUS_PUBLISHED;
+        })->all();
     }
 
     /**

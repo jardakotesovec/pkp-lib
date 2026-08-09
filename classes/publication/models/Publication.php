@@ -39,17 +39,25 @@ use PKP\author\models\Author;
 use PKP\citation\models\Citation as CitationModel;
 use PKP\controlledVocab\ControlledVocab;
 use PKP\controlledVocab\ControlledVocabEntry;
+use PKP\core\PKPString;
+use PKP\core\traits\DataObjectReadCompat;
 use PKP\core\traits\ModelWithSettings;
 use PKP\dataCitation\DataCitation;
 use PKP\doi\models\Doi as DoiModel;
+use PKP\facades\Locale;
 use PKP\funder\Funder;
 use PKP\galley\models\Galley;
+use PKP\publication\helpers\PublicationVersionInfo;
 use PKP\publication\PublicationCategory;
 use PKP\services\PKPSchemaService;
+use PKP\submission\models\Submission as SubmissionModel;
 
 class Publication extends Model
 {
     use ModelWithSettings;
+    use DataObjectReadCompat {
+        DataObjectReadCompat::getLocalizedData insteadof ModelWithSettings;
+    }
 
     /**
      * Schema properties that never appear as settings rows: composed or
@@ -175,10 +183,14 @@ class Publication extends Model
     public function authors(): HasMany
     {
         // Legacy's ORDER BY seq has no explicit tiebreak but yields id order
-        // for equal-seq contributors; make that deterministic here
+        // for equal-seq contributors; make that deterministic here.
+        // chaperone() hydrates the inverse publication() relation on the
+        // loaded authors, so the compat surface's submission-locale chain
+        // (Author::compatSubmissionLocale()) costs no parent refetch.
         return $this->hasMany(Author::class, 'publication_id', 'publication_id')
             ->orderBy('seq')
-            ->orderBy('author_id');
+            ->orderBy('author_id')
+            ->chaperone('publication');
     }
 
     /**
@@ -570,6 +582,363 @@ class Publication extends Model
         );
 
         return $publication;
+    }
+
+    //
+    // EXPERIMENTAL DataObject read-compat surface (see DataObjectReadCompat)
+    //
+
+    /** Per-instance memo of the vocab entry arrays, one pass for all four props */
+    protected ?array $compatVocabProps = null;
+
+    /**
+     * The publication's submission, for the props the legacy hydration
+     * reads off the submission row (locale, and the context for the
+     * unassigned-version string)
+     */
+    public function submission(): BelongsTo
+    {
+        return $this->belongsTo(SubmissionModel::class, 'submission_id', 'submission_id');
+    }
+
+    /**
+     * @copydoc DataObjectReadCompat::dataObjectCompatPseudoProps()
+     */
+    protected function dataObjectCompatPseudoProps(): array
+    {
+        return [
+            'locale' => 'compatLocale',
+            'authors' => 'compatAuthors',
+            'galleys' => 'compatGalleys',
+            'citations' => 'compatCitations',
+            'citationsRaw' => 'compatCitationsRaw',
+            'doiObject' => 'compatDoiObject',
+            'funders' => 'compatFunders',
+            'dataCitations' => 'compatDataCitations',
+            'keywords' => 'compatKeywords',
+            'subjects' => 'compatSubjects',
+            'disciplines' => 'compatDisciplines',
+            'supportingAgencies' => 'compatSupportingAgencies',
+            'versionString' => 'compatVersionString',
+        ];
+    }
+
+    /**
+     * @copydoc DataObjectReadCompat::dataObjectCompatConvert()
+     *
+     * JSON-schema typed conversion identical to what toDataObject() applies,
+     * so compat reads carry the same values the bridged DataObject would.
+     */
+    protected function dataObjectCompatConvert(string $key, mixed $value): mixed
+    {
+        if ($value === null) {
+            return null;
+        }
+        $type = static::schemaPropTypes()[$key] ?? 'string';
+        if (in_array($key, $this->getMultilingualProps())) {
+            // Match DataObject::setData() semantics: null locale values are
+            // dropped, and a prop with no remaining locales is absent
+            $localized = [];
+            foreach ((array) $value as $locale => $raw) {
+                $converted = self::convertFromDb($raw, $type);
+                if ($converted !== null) {
+                    $localized[$locale] = $converted;
+                }
+            }
+            return $localized === [] ? null : $localized;
+        }
+        return self::convertFromDb($value, $type);
+    }
+
+    /** The submission's locale, as \PKP\publication\DAO::fromRow() attaches it */
+    protected function compatLocale(): ?string
+    {
+        return $this->submission?->locale;
+    }
+
+    /** Live contributor models, display order (legacy: LazyCollection of Author DataObjects) */
+    protected function compatAuthors(): mixed
+    {
+        return $this->authors;
+    }
+
+    /** Live galley models, display order (legacy: LazyCollection of Galley DataObjects) */
+    protected function compatGalleys(): mixed
+    {
+        return $this->galleys;
+    }
+
+    /** Live citation models, seq order (legacy: LazyCollection of Citation DataObjects) */
+    protected function compatCitations(): mixed
+    {
+        return $this->citations;
+    }
+
+    /** Raw citations, matching getRawCitationsByPublicationId()->implode(PHP_EOL) */
+    protected function compatCitationsRaw(): string
+    {
+        return $this->citations
+            ->map(fn (CitationModel $citation) => $citation->rawCitation)
+            ->implode(PHP_EOL);
+    }
+
+    /** The DOI model, only when a DOI is assigned (legacy: setDoiObject guard) */
+    protected function compatDoiObject(): ?DoiModel
+    {
+        return empty($this->doiId) ? null : $this->doi;
+    }
+
+    /** Funder models as a plain array, like \PKP\publication\DAO::setFunders() */
+    protected function compatFunders(): array
+    {
+        return $this->funders->values()->all();
+    }
+
+    /** Data citation models as a plain array, like setDataCitations() */
+    protected function compatDataCitations(): array
+    {
+        return $this->dataCitations->values()->all();
+    }
+
+    protected function compatKeywords(): array
+    {
+        return $this->compatControlledVocab(ControlledVocab::CONTROLLED_VOCAB_SUBMISSION_KEYWORD);
+    }
+
+    protected function compatSubjects(): array
+    {
+        return $this->compatControlledVocab(ControlledVocab::CONTROLLED_VOCAB_SUBMISSION_SUBJECT);
+    }
+
+    protected function compatDisciplines(): array
+    {
+        return $this->compatControlledVocab(ControlledVocab::CONTROLLED_VOCAB_SUBMISSION_DISCIPLINE);
+    }
+
+    protected function compatSupportingAgencies(): array
+    {
+        return $this->compatControlledVocab(ControlledVocab::CONTROLLED_VOCAB_SUBMISSION_AGENCY);
+    }
+
+    /**
+     * A controlled vocabulary prop built exactly as
+     * \PKP\controlledVocab\Repository::getBySymbolic() builds it (per-locale
+     * arrays of getEntryData(), in entry retrieval order), from the
+     * controlledVocabs relation — batched at both levels under relationship
+     * autoloading. All four props are computed in one pass and memoized.
+     */
+    protected function compatControlledVocab(string $symbolic): array
+    {
+        if ($this->compatVocabProps === null) {
+            $this->compatVocabProps = [
+                ControlledVocab::CONTROLLED_VOCAB_SUBMISSION_KEYWORD => [],
+                ControlledVocab::CONTROLLED_VOCAB_SUBMISSION_SUBJECT => [],
+                ControlledVocab::CONTROLLED_VOCAB_SUBMISSION_DISCIPLINE => [],
+                ControlledVocab::CONTROLLED_VOCAB_SUBMISSION_AGENCY => [],
+            ];
+            foreach ($this->controlledVocabs as $vocab) {
+                $result = [];
+                foreach ($vocab->controlledVocabEntries as $entry) {
+                    foreach ($entry->name as $locale => $value) {
+                        $result[$locale][] = $entry->getEntryData($locale);
+                    }
+                }
+                $this->compatVocabProps[$vocab->symbolic] = $result;
+            }
+        }
+        return $this->compatVocabProps[$symbolic] ?? [];
+    }
+
+    /**
+     * The version string, as \PKP\publication\DAO::fromRow() attaches it via
+     * Repository::getVersionString() — logic mirrored here because that
+     * repository method type-hints the DataObject class.
+     */
+    protected function compatVersionString(): string
+    {
+        $version = $this->getVersion();
+        if ($version !== null) {
+            return (string) $version;
+        }
+        $submissionContext = app()->get('context')->get((int) $this->submission?->contextId);
+        $dateFormatShort = PKPString::convertStrftimeFormat($submissionContext->getLocalizedDateFormatShort());
+        return __('publication.versionStage.unassignedVersion', [
+            'publicationCreatedDate' => (new \Carbon\Carbon($this->getData('createdAt')))
+                ->locale(Locale::getLocale())
+                ->translatedFormat($dateFormatShort),
+        ]);
+    }
+
+    /**
+     * @copydoc \PKP\publication\PKPPublication::getDefaultLocale()
+     */
+    public function getDefaultLocale(): ?string
+    {
+        return $this->getData('locale');
+    }
+
+    /**
+     * @copydoc \PKP\publication\PKPPublication::getVersion()
+     */
+    public function getVersion(): ?PublicationVersionInfo
+    {
+        $versionStageStr = $this->getData('versionStage');
+        if (!isset($versionStageStr)) {
+            return null;
+        }
+        return new PublicationVersionInfo(
+            VersionStage::from($versionStageStr),
+            $this->getData('versionMajor'),
+            $this->getData('versionMinor')
+        );
+    }
+
+    /**
+     * @copydoc \PKP\publication\PKPPublication::getLocalizedFullTitle()
+     */
+    public function getLocalizedFullTitle($preferredLocale = null, string $format = 'text')
+    {
+        $fullTitle = $this->getLocalizedTitle($preferredLocale, $format);
+        $subtitle = $this->getLocalizedSubTitle($preferredLocale, $format);
+        if ($subtitle) {
+            return PKPString::concatTitleFields([$fullTitle, $subtitle]);
+        }
+        return $fullTitle;
+    }
+
+    /**
+     * @copydoc \PKP\publication\PKPPublication::getLocalizedTitle()
+     */
+    public function getLocalizedTitle($preferredLocale = null, string $format = 'text')
+    {
+        $usedLocale = null;
+        $title = $this->getLocalizedData('title', $preferredLocale, $usedLocale);
+        $prefix = $this->getData('prefix', $usedLocale);
+
+        switch (strtolower($format)) {
+            case 'html':
+                // Title is already in HTML, prefix is in text. Convert prefix.
+                if ($prefix) {
+                    $prefix = htmlspecialchars($prefix);
+                }
+                break;
+            case 'text':
+                // Title is in HTML, prefix is already in text. Convert title.
+                $title = htmlspecialchars_decode(strip_tags($title));
+                break;
+            default: throw new \Exception('Invalid format!');
+        }
+
+        if ($prefix) {
+            $title = $prefix . ' ' . $title;
+        }
+
+        return $title;
+    }
+
+    /**
+     * @copydoc \PKP\publication\PKPPublication::getLocalizedSubTitle()
+     */
+    public function getLocalizedSubTitle($preferredLocale = null, string $format = 'text')
+    {
+        $subTitle = $this->getLocalizedData('subtitle', $preferredLocale);
+        if ($subTitle) {
+            return strtolower($format) === 'text' ? htmlspecialchars_decode(strip_tags($subTitle)) : $subTitle;
+        }
+        return '';
+    }
+
+    /**
+     * @copydoc \PKP\publication\PKPPublication::getFullTitles()
+     */
+    public function getFullTitles(string $format = 'text')
+    {
+        $allTitles = (array) $this->getData('title');
+        $return = [];
+        foreach ($allTitles as $locale => $title) {
+            if (!$title) {
+                continue;
+            }
+            $return[$locale] = $this->getLocalizedFullTitle($locale, $format);
+        }
+        return $return;
+    }
+
+    /**
+     * @copydoc \PKP\publication\PKPPublication::getDoi()
+     */
+    public function getDoi(): ?string
+    {
+        $doiObject = $this->getData('doiObject');
+        if (empty($doiObject)) {
+            return null;
+        }
+        return $doiObject->getData('doi');
+    }
+
+    /**
+     * @copydoc \PKP\publication\PKPPublication::getStoredPubId()
+     */
+    public function getStoredPubId($pubIdType)
+    {
+        if ($pubIdType === 'doi') {
+            return $this->getDoi();
+        }
+        return $this->getData('pub-id::' . $pubIdType);
+    }
+
+    /**
+     * @copydoc \PKP\publication\PKPPublication::getStartingPage()
+     */
+    public function getStartingPage()
+    {
+        $ranges = $this->getPageArray();
+        $firstRange = array_shift($ranges);
+        if (is_array($firstRange)) {
+            return array_shift($firstRange);
+        }
+        return '';
+    }
+
+    /**
+     * @copydoc \PKP\publication\PKPPublication::getEndingPage()
+     */
+    public function getEndingPage()
+    {
+        $ranges = $this->getPageArray();
+        $lastRange = array_pop($ranges);
+        $lastPage = is_array($lastRange) ? array_pop($lastRange) : '';
+        return $lastPage ?? '';
+    }
+
+    /**
+     * @copydoc \PKP\publication\PKPPublication::getPageArray()
+     */
+    public function getPageArray()
+    {
+        $pages = $this->getData('pages') ?? '';
+        // Strip any leading word
+        if (preg_match('/^[[:alpha:]]+\W/', $pages)) {
+            // but don't strip a leading roman numeral
+            if (!preg_match('/^[MDCLXVUI]+\W/i', $pages)) {
+                // strip the word or abbreviation, including the period or colon
+                $pages = preg_replace('/^[[:alpha:]]+[:.]?/', '', $pages);
+            }
+        }
+        // strip leading and trailing space
+        $pages = trim($pages);
+        // shortcut the explode/foreach if the remainder is an empty value
+        if ($pages === '') {
+            return [];
+        }
+        // commas indicate distinct ranges
+        $ranges = explode(',', $pages);
+        $pageArray = [];
+        foreach ($ranges as $range) {
+            // hyphens (or double-hyphens) indicate range spans
+            $pageArray[] = array_map(trim(...), explode('-', str_replace(['--', '–'], '-', $range), 2));
+        }
+        return $pageArray;
     }
 
     /**

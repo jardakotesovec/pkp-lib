@@ -25,12 +25,16 @@ namespace PKP\doi\models;
 
 use APP\facades\Repo;
 use Illuminate\Database\Eloquent\Model;
+use PKP\core\traits\DataObjectReadCompat;
 use PKP\core\traits\ModelWithSettings;
 use PKP\services\PKPSchemaService;
 
 class Doi extends Model
 {
     use ModelWithSettings;
+    use DataObjectReadCompat {
+        DataObjectReadCompat::getLocalizedData insteadof ModelWithSettings;
+    }
 
     /**
      * Schema properties that never appear as settings rows: resolvingUrl is
@@ -166,6 +170,57 @@ class Doi extends Model
         }
 
         return $doi;
+    }
+
+    //
+    // EXPERIMENTAL DataObject read-compat surface (see DataObjectReadCompat)
+    //
+
+    /**
+     * @copydoc DataObjectReadCompat::dataObjectCompatPseudoProps()
+     */
+    protected function dataObjectCompatPseudoProps(): array
+    {
+        return [
+            'resolvingUrl' => 'compatResolvingUrl',
+        ];
+    }
+
+    /**
+     * @copydoc DataObjectReadCompat::dataObjectCompatConvert()
+     */
+    protected function dataObjectCompatConvert(string $key, mixed $value): mixed
+    {
+        if ($value === null) {
+            return null;
+        }
+        $type = static::schemaPropTypes()[$key] ?? 'string';
+        if (in_array($key, $this->getMultilingualProps())) {
+            $localized = [];
+            foreach ((array) $value as $locale => $raw) {
+                $converted = self::convertFromDb($raw, $type);
+                if ($converted !== null) {
+                    $localized[$locale] = $converted;
+                }
+            }
+            return $localized === [] ? null : $localized;
+        }
+        return self::convertFromDb($value, $type);
+    }
+
+    /**
+     * The resolving URL, as \PKP\doi\DAO::fromRow() attaches it —
+     * \PKP\doi\Doi::getResolvingUrl() + _doiURLEncode() logic mirrored
+     */
+    protected function compatResolvingUrl(): string
+    {
+        $doi = (string) $this->getAttribute('doi');
+        if ($doi === '') {
+            return '';
+        }
+        $search = ['%', '"', '#', ' ', '<', '>', '{'];
+        $replace = ['%25', '%22', '%23', '%20', '%3c', '%3e', '%7b'];
+        return 'https://doi.org/' . str_replace($search, $replace, $doi);
     }
 
     /**
