@@ -177,12 +177,14 @@ class Author extends Model
             // Derive the role side-maps from the relation, reproducing the
             // formats of Repo::creditContributorRole():
             // getCreditRolesByContributorId() returns rows of
-            // ['role' => identifier, 'degree' => degree], in row order;
+            // ['role' => identifier, 'degree' => degree] in credit_role_id
+            // order (its unordered join is driven by the credit_roles side);
             // getContributorRolesByContributorId() returns ContributorRole
             // models ordered by contributor_role_id
             $roleLinks = $this->creditContributorRoles;
             $creditRoles ??= $roleLinks
                 ->filter(fn (CreditContributorRole $link) => $link->creditRoleId !== null)
+                ->sortBy('creditRoleId')
                 ->map(fn (CreditContributorRole $link) => [
                     'role' => $link->creditRole?->creditRoleIdentifier,
                     'degree' => $link->creditDegree,
@@ -215,6 +217,7 @@ class Author extends Model
      */
     public function scopeOrderBySequence(Builder $query): Builder
     {
-        return $query->orderBy('seq');
+        // Tiebreak matches the id order legacy yields for equal seq values
+        return $query->orderBy('seq')->orderBy('author_id');
     }
 }

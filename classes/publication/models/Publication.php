@@ -170,7 +170,11 @@ class Publication extends Model
      */
     public function authors(): HasMany
     {
-        return $this->hasMany(Author::class, 'publication_id', 'publication_id')->orderBy('seq');
+        // Legacy's ORDER BY seq has no explicit tiebreak but yields id order
+        // for equal-seq contributors; make that deterministic here
+        return $this->hasMany(Author::class, 'publication_id', 'publication_id')
+            ->orderBy('seq')
+            ->orderBy('author_id');
     }
 
     /**
