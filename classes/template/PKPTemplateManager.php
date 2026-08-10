@@ -2638,7 +2638,7 @@ class PKPTemplateManager extends Smarty
 
         $output = '';
         $navigationMenu = null;
-        $navigationMenus = $navigationMenuDao->getByArea($contextId, $areaName)->toArray();
+        $navigationMenus = $navigationMenuDao->getByArea($contextId, $areaName);
         if (isset($navigationMenus[0])) {
             $navigationMenu = $navigationMenus[0];
             app()->get('navigationMenu')->getMenuTree($navigationMenu);
