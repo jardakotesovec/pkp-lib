@@ -923,8 +923,12 @@ abstract class ThemePlugin extends LazyLoadPlugin
      */
     public function getUsageStatsChartData(int $submissionId): array
     {
+        $chartType = $this->getOption('displayStats');
+        if ($chartType === false) {
+            $chartType = 'line';
+        }
         return [
-            'chartType' => $this->getOption('displayStats'),
+            'chartType' => $chartType,
             'statsData' => $this->getAllDownloadsStats($submissionId),
             'monthLabels' => explode(' ', __('plugins.themes.default.displayStats.monthInitials')),
             'noStatsMessage' => __('plugins.themes.default.displayStats.noStats'),
