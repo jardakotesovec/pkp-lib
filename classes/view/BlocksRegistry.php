@@ -55,17 +55,6 @@ abstract class BlocksRegistry
     }
 
     /**
-     * Load all registered blocks
-     *
-     * This function passes all registered data to the templates
-     *
-     * @param ?array $blockIds An array of block ids. If passed, it will
-     * only load those blocks and will pass them back in the order specified
-     * in the array.
-     */
-    abstract public function load(?array $blockIds = null): Collection;
-
-    /**
      * Register blocks from all sources
      *
      * Load default blocks along with any custom blocks from

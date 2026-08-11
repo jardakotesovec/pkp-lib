@@ -15,6 +15,8 @@
 namespace PKP\view;
 
 use APP\core\Application;
+use APP\publication\Publication;
+use APP\submission\Submission;
 use APP\template\TemplateManager;
 use Illuminate\Support\Collection;
 use PKP\plugins\interfaces\HasMetadataBlocks;
@@ -24,21 +26,11 @@ use PKP\view\MetadataBlock;
 
 class MetadataBlocksRegistry extends BlocksRegistry
 {
-    public function load(?array $blockIds = null): Collection
+    public function load(Publication $publication, Submission $submission): Collection
     {
         $blocks = $this->get();
-        if (!is_null($blockIds)) {
-            $blocks = $blocks
-                ->filter(fn(MetadataBlock $block) => in_array($block->id, $blockIds))
-                ->sort(function(MetadataBlock $a, MetadataBlock $b) use ($blockIds) {
-                    return array_search($a->id, $blockIds) - array_search($b->id, $blockIds);
-                });
-        }
-        $templateMgr = TemplateManager::getManager(Application::get()->getRequest());
-        $blocks->each(function(MetadataBlock $block) use ($templateMgr) {
+        $blocks->each(function(MetadataBlock $block) use ($publication, $submission) {
             if (isset($block?->loader) && !$block->isLoaded()) {
-                $publication = $templateMgr->getTemplateVars('publication');
-                $submission = $templateMgr->getTemplateVars('article');
                 call_user_func($block->loader, $publication, $submission);
                 $block->loaded();
             }

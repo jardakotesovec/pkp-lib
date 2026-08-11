@@ -56,10 +56,6 @@ abstract class Layout extends Component
         view()->share('filterGalleys', [$this, 'filterGalleys']);
         view()->share('primaryFileGenreIds', [$this, 'primaryFileGenreIds']);
         view()->share('homepageBlocks', [$this, 'getHomepageBlocks']);
-
-        if ($this->isPublicationPage()) {
-            view()->share('metadata', [$this, 'getMetadataBlocks']);
-        }
     }
 
     /**
@@ -180,12 +176,6 @@ abstract class Layout extends Component
     }
 
     /**
-     * Are we currently viewing the article, book or
-     * preprint landing page?
-     */
-    abstract public function isPublicationPage() : bool;
-
-    /**
      * Get the homepage blocks
      *
      *
@@ -196,18 +186,5 @@ abstract class Layout extends Component
     public function getHomepageBlocks(?array $blockIds = null): Collection
     {
         return $this->templateMgr->homepageBlocks->load($blockIds);
-    }
-
-    /**
-     * Get the article metadata blocks
-     *
-     *
-     * @param ?array $blockIds An array of block ids. If passed, it will
-     * only load those blocks and will pass them back in the order specified
-     * in the array.
-     */
-    public function getMetadataBlocks(?array $blockIds = null): Collection
-    {
-        return $this->templateMgr->metadataBlocks->load($blockIds);
     }
 }
