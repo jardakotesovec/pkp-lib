@@ -138,7 +138,7 @@ class MetadataBlocksRegistry extends BlocksRegistry
         $this->register(
             new MetadataBlock(
                 component: 'metadata.license',
-                title: __('submission.fundingStatement'),
+                title: __('submission.license'),
             )
         );
     }
