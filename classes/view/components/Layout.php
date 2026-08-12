@@ -55,7 +55,6 @@ abstract class Layout extends Component
         view()->share('locales', $this->getLocales());
         view()->share('filterGalleys', [$this, 'filterGalleys']);
         view()->share('primaryFileGenreIds', [$this, 'primaryFileGenreIds']);
-        view()->share('homepageBlocks', [$this, 'getHomepageBlocks']);
     }
 
     /**
@@ -173,18 +172,5 @@ abstract class Layout extends Component
         }
 
         return $primaryFileGenreIds;
-    }
-
-    /**
-     * Get the homepage blocks
-     *
-     *
-     * @param ?array $blockIds An array of block ids. If passed, it will
-     * only load those blocks and will pass them back in the order specified
-     * in the array.
-     */
-    public function getHomepageBlocks(?array $blockIds = null): Collection
-    {
-        return $this->templateMgr->homepageBlocks->load($blockIds);
     }
 }

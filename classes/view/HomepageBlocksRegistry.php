@@ -17,6 +17,7 @@ namespace PKP\view;
 use APP\core\Application;
 use APP\template\TemplateManager;
 use Illuminate\Support\Collection;
+use PKP\context\Context;
 use PKP\plugins\interfaces\HasHomepageBlocks;
 use PKP\plugins\Plugin;
 use PKP\plugins\PluginRegistry;
@@ -25,24 +26,34 @@ use PKP\view\HomepageBlock;
 
 class HomepageBlocksRegistry extends BlocksRegistry
 {
-    public function load(?array $blockIds = null): Collection
+    public function load(?Context $context): Collection
     {
         $blocks = $this->get();
-        if (!is_null($blockIds)) {
-            $blocks = $blocks
-                ->filter(fn(HomepageBlock $block) => in_array($block->id, $blockIds))
-                ->sort(function(HomepageBlock $a, HomepageBlock $b) use ($blockIds) {
-                    return array_search($a->id, $blockIds) - array_search($b->id, $blockIds);
-                });
-        }
-        $blocks->each(function(HomepageBlock $block) {
+        $blocks->each(function(HomepageBlock $block) use ($context) {
             if (isset($block?->loader) && !$block->isLoaded()) {
-                call_user_func($block->loader);
+                call_user_func($block->loader, $context);
                 $block->loaded();
             }
         });
 
         return $blocks;
+    }
+
+    /**
+     * Only register blocks for the correct context/site level
+     */
+    public function register(HomepageBlock|Block $block): void
+    {
+        if (!is_a($block, HomepageBlock::class)) {
+            return;
+        }
+
+        $context = Application::get()->getRequest()->getContext();
+        if (($context && !$block->forContext) || (!$context && !$block->forSite)) {
+            return;
+        }
+
+        parent::register($block);
     }
 
     protected function registerAll(): void
