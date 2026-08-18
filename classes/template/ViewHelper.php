@@ -15,6 +15,7 @@ namespace PKP\template;
 
 use APP\core\Application;
 use PKP\core\PKPString;
+use PKP\facades\Locale;
 
 class ViewHelper
 {
@@ -76,6 +77,34 @@ class ViewHelper
     {
         $result = PKPString::html2text($html);
         return self::escapeVueDelimiters($result);
+    }
+
+    /**
+     * Get the value of a multilingual field from mapped (API-shaped) data
+     * in the preferred locale, falling back to the first non-empty value.
+     *
+     * Mirrors DataObject::getLocalizedData() for data mapped by the
+     * schema maps, where multilingual fields are associative arrays
+     * keyed by locale.
+     *
+     * @param mixed $multilingual The multilingual array, or a plain value
+     * @param ?string $preferredLocale Defaults to the current locale
+     */
+    public static function localize(mixed $multilingual, ?string $preferredLocale = null): mixed
+    {
+        if (!is_array($multilingual)) {
+            return $multilingual;
+        }
+        $preferredLocale ??= Locale::getLocale();
+        if (!empty($multilingual[$preferredLocale])) {
+            return $multilingual[$preferredLocale];
+        }
+        foreach ($multilingual as $value) {
+            if (!empty($value)) {
+                return $value;
+            }
+        }
+        return null;
     }
 
     /**
