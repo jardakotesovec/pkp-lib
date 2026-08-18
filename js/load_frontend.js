@@ -56,7 +56,6 @@ import PkpTabRoot from '@/frontend/components/PkpTab/PkpTabRoot.vue';
 import PkpTabList from '@/frontend/components/PkpTab/PkpTabList.vue';
 import PkpTabTrigger from '@/frontend/components/PkpTab/PkpTabTrigger.vue';
 import PkpTabContent from '@/frontend/components/PkpTab/PkpTabContent.vue';
-import PkpTabMenu from '@/frontend/components/PkpTab/PkpTabMenu.vue';
 
 // PkpAccordion Components
 import PkpAccordionRoot from '@/frontend/components/PkpAccordion/PkpAccordionRoot.vue';
@@ -125,7 +124,6 @@ VueRegistry.registerComponent('PkpTabRoot', PkpTabRoot);
 VueRegistry.registerComponent('PkpTabList', PkpTabList);
 VueRegistry.registerComponent('PkpTabTrigger', PkpTabTrigger);
 VueRegistry.registerComponent('PkpTabContent', PkpTabContent);
-VueRegistry.registerComponent('PkpTabMenu', PkpTabMenu);
 
 // Register PkpAccordion Components
 VueRegistry.registerComponent('PkpAccordionRoot', PkpAccordionRoot);
