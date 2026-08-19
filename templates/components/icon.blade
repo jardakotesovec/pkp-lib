@@ -3,7 +3,7 @@
 
 @php
     // Register icon so svg-icon-sprite.blade will include it
-    \PKP\template\PKPTemplateManager::getManager()->addSvgIcons([$name]);
+    \PKP\facades\Frontend::addIcons([$name]);
 @endphp
 
 <svg {{ $attributes->merge(['class' => $class]) }} aria-hidden="true">

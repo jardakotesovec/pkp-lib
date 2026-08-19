@@ -3,14 +3,14 @@
 
     Outputs the SVG sprite sheet containing icon symbols.
     This combines:
-    1. Icons registered via addSvgIcons() (for Vue components)
+    1. Icons registered via Frontend::addIcons() (for Vue components)
     2. Icons pushed to the 'svg-icons' stack (via <x-pkp::icon>)
 
     Include from Smarty via:
     {include file="frontend/components/svg-icon-sprite.blade"}
 --}}
 @php
-    $svgIcons = \PKP\template\PKPTemplateManager::getManager()->getSvgIcons();
+    $svgIcons = \PKP\facades\Frontend::getIcons();
 @endphp
 
 @foreach($svgIcons as $iconName)

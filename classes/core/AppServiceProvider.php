@@ -46,6 +46,12 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->app->singleton('maps', fn ($app) => new MapContainer());
 
+        // Frontend service, holding the reader-facing registries
+        $this->app->singleton(\PKP\frontend\Frontend::class, fn ($app) => new \APP\frontend\Frontend());
+
+        // Frontend content helpers, exposed to templates as ContentHelper
+        $this->app->singleton(\PKP\frontend\ContentHelper::class, fn ($app) => new \APP\frontend\ContentHelper());
+
         $this->app->singleton(PKPSchemaService::class, fn ($app) => $app->get('schema'));
 
         $this->app->singleton(PKPRequest::class, fn ($app) => Application::get()->getRequest());

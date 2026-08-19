@@ -30,8 +30,6 @@ use APP\file\PublicFileManager;
 use APP\publication\Publication;
 use APP\submission\Submission;
 use APP\template\TemplateManager;
-use APP\view\HomepageBlocksRegistry;
-use APP\view\MetadataBlocksRegistry;
 use Exception;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
@@ -110,19 +108,8 @@ class PKPTemplateManager extends Smarty
     /** @var array Key/value list of constants to expose in the JS interface */
     private array $_constants = [];
 
-    /** @var array Key/value list of locale keys to expose in the JS interface
-     * Used only for frontend base components
-    */
-    private $_localeKeys = [];
-
     /** @var array Initial state data to be managed by the page's Vue.js component */
     protected array $_state = [];
-
-    /** @var array State that can be expose via pinia store on frontend when vue is enabled */
-    protected array $_piniaData = [];
-
-    /** @var array List of SVG icon names required by Vue components */
-    protected array $_svgIcons = [];
 
     /** @var string Type of cacheability (Cache-Control). */
     private string $_cacheability = self::CACHEABILITY_NO_STORE; // Safe default
@@ -141,12 +128,6 @@ class PKPTemplateManager extends Smarty
 
     /** @var bool Track whether vue runtime is included */
     private bool $isVueRuntimeIncluded = false;
-
-    /** @var MetadataBlocksRegistry Register and load metadata blocks for the reader facing UI */
-    public MetadataBlocksRegistry $metadataBlocks;
-
-    /** @var HomepageBlocksRegistry Register and load metadata blocks for the reader facing UI */
-    public HomepageBlocksRegistry $homepageBlocks;
 
     /**
      * Constructor.
@@ -182,9 +163,6 @@ class PKPTemplateManager extends Smarty
         // This routes {include} directives through Laravel's FileViewFinder
         // for unified template resolution and hook firing
         $this->template_class = \PKP\core\blade\SmartyTemplate::class;
-
-        $this->metadataBlocks = new MetadataBlocksRegistry();
-        $this->homepageBlocks = new HomepageBlocksRegistry();
     }
 
     /**
@@ -698,51 +676,6 @@ class PKPTemplateManager extends Smarty
     }
 
     /**
-     * Set locale keys to be exposed in JavaScript at pkp.localeKeys.<key>
-     * Used ONLY on the frontend, backend has automated workflow to populate localeKeys
-     *
-     * @param array $keys Array of locale keys
-     */
-    public function setLocaleKeys($keys)
-    {
-        foreach ($keys as $key) {
-            if (!array_key_exists($key, $this->_localeKeys)) {
-                $this->_localeKeys[$key] = __($key);
-            }
-        }
-    }
-
-    /**
-     * Register SVG icons needed by Vue components on this page.
-     *
-     * Icons registered here will be included in the SVG sprite sheet.
-     * Use this method in handlers to declare which icons Vue components need.
-     *
-     * Example:
-     *   $templateManager->addSvgIcons(['Add', 'Edit', 'Delete', 'ChevronDown']);
-     *
-     * @param array $icons Array of icon names (e.g., ['Add', 'Edit', 'Delete'])
-     */
-    public function addSvgIcons(array $icons): void
-    {
-        foreach ($icons as $icon) {
-            if (!in_array($icon, $this->_svgIcons, true)) {
-                $this->_svgIcons[] = $icon;
-            }
-        }
-    }
-
-    /**
-     * Get the list of SVG icons required by Vue components.
-     *
-     * @return array Array of icon names
-     */
-    public function getSvgIcons(): array
-    {
-        return $this->_svgIcons;
-    }
-
-    /**
      * Get a piece of the state data
      */
     public function getState(string $key): mixed
@@ -759,15 +692,6 @@ class PKPTemplateManager extends Smarty
     {
         $this->_state = array_merge($this->_state, $data);
     }
-
-    /**
-     * Set initial state data to be managed by the Vue.js component on this page
-     */
-    public function setPiniaData(array $data)
-    {
-        $this->_piniaData = array_merge($this->_piniaData, $data);
-    }
-
 
     /**
      * Register all files required by the core JavaScript library
@@ -917,11 +841,13 @@ class PKPTemplateManager extends Smarty
             $this->isVueRuntimeIncluded = true;
             $baseUrl = Application::get()->getRequest()->getBaseUrl();
 
-            $this->setLocaleKeys(['common.close']);
-            $this->setLocaleKeys(['common.unknownError']);
-            $this->setLocaleKeys(['common.error']);
-            $this->setLocaleKeys(['common.ok']);
-            $this->setLocaleKeys(['common.clearSelection']); // PkpCombobox
+            app(\PKP\frontend\Frontend::class)->addLocaleKeys([
+                'common.close',
+                'common.unknownError',
+                'common.error',
+                'common.ok',
+                'common.clearSelection', // PkpCombobox
+            ]);
 
             $this->addJavaScript(
                 'pkpAppFrontend',
@@ -1531,6 +1457,10 @@ class PKPTemplateManager extends Smarty
      */
     public function display($template = null, $cache_id = null, $compile_id = null, $parent = null)
     {
+        if (!$this->isBackendPage) {
+            app(\PKP\frontend\Frontend::class)->boot();
+        }
+
         if ($this->isBackendPage) {
 
             $this->unregisterPlugin('modifier', 'escape');
@@ -1560,132 +1490,135 @@ class PKPTemplateManager extends Smarty
             });
         }
 
-        // Output global constants and locale keys used in new component library
-        $output = 'window.pkp = window.pkp || {};';
-        if (!empty($this->_constants)) {
-            $output .= 'pkp.const = ' . json_encode($this->_constants) . ';';
-        }
-
-        if (!empty($this->_localeKeys)) {
-            $output .= 'pkp.localeKeys = pkp.localeKeys || {};';
-            $output .= 'Object.assign(pkp.localeKeys, ' . json_encode($this->_localeKeys) . ');';
-        }
-
-        if (!empty($this->_piniaData)) {
-            $output .= 'pkp._piniaData = ' . json_encode($this->_piniaData) . ';';
-        }
-
-        $dispatcher = Application::get()->getDispatcher();
-        $request = Application::get()->getRequest();
-        $context = $request->getContext();
-
-        // Site-wide values that are not scoped to the currently selected context.
-        $output .= 'pkp.site = ' . json_encode([
-            'baseUrl' => $request->getBaseUrl(),
-        ]) . ';';
-
-        $output .= 'pkp.tinyMCE = ' . json_encode([
-            'skinUrl' => $this->getTinyMceSkinUrl($request),
-        ]) . ';';
-
-        $pageContext = [
-            'app' => Application::get()->getName(),
-            'id' => $context?->getId() ?? null,
-            'currentLocale' => Locale::getLocale(),
-            'primaryLocale' => Locale::getPrimaryLocale(),
-            'apiBaseUrl' => $dispatcher->url($request, PKPApplication::ROUTE_API, $context?->getPath() ?: Application::SITE_CONTEXT_PATH),
-            'pageBaseUrl' => $dispatcher->url($request, PKPApplication::ROUTE_PAGE, $context?->getPath() ?: Application::SITE_CONTEXT_PATH) . '/',
-            'legacyGridBaseUrl' => $dispatcher->url(
-                $request,
-                Application::ROUTE_COMPONENT,
-                null,
-                'componentHandler',
-                'action',
-                null,
-            ),
-            'helpUrl' => Application::get()->getHelpUrl(),
-            'timeZone' => Config::getVar('general', 'time_zone'),
-            'navigationMenuMaxDepth' => (int) Config::getVar('interface', 'navigation_menu_max_depth', PKPNavigationMenuController::DEFAULT_MAX_DEPTH),
-            'featureFlags' => []
-        ];
-
-        if ($context) {
-            $pageContext = array_merge($pageContext, [
-                'dateFormatShort' => PKPString::convertStrftimeFormat($context->getLocalizedDateFormatShort()),
-                'dateFormatLong' => PKPString::convertStrftimeFormat($context->getLocalizedDateFormatLong()),
-                'datetimeFormatShort' => PKPString::convertStrftimeFormat($context->getLocalizedDateTimeFormatShort()),
-                'datetimeFormatLong' => PKPString::convertStrftimeFormat($context->getLocalizedDateTimeFormatLong()),
-                'timeFormat' => PKPString::convertStrftimeFormat($context->getLocalizedTimeFormat()),
-                'supportedLocales' => $context?->getSupportedLocaleNames(LocaleMetadata::LANGUAGE_LOCALE_ONLY),
-                'supportedFormLocales' => $context?->getSupportedFormLocaleNames()
-            ]);
-        } else {
-            $pageContext = array_merge($pageContext, [
-                'dateFormatShort' => PKPString::convertStrftimeFormat(Config::getVar('general', 'date_format_short')),
-                'dateFormatLong' => PKPString::convertStrftimeFormat(Config::getVar('general', 'date_format_long')),
-                'datetimeFormatShort' => PKPString::convertStrftimeFormat(Config::getVar('general', 'datetime_format_short')),
-                'datetimeFormatLong' => PKPString::convertStrftimeFormat(Config::getVar('general', 'datetime_format_long')),
-                'timeFormat' => PKPString::convertStrftimeFormat(Config::getVar('general', 'time_format')),
-                'supportedLocales' => !PKPSessionGuard::isSessionDisable() ? $request->getSite()->getSupportedLocaleNames(LocaleMetadata::LANGUAGE_LOCALE_ONLY) : [],
-            ]);
-        }
-
-        $output .= 'pkp.context = ' . json_encode($pageContext) . ';';
-
-        // Load current user data
-        if (Application::isInstalled()) {
-            $user = $this->_request->getUser();
-            if ($user) {
-                // Fetch user groups where the user is assigned
-                $userGroups = UserGroup::query()
-                    ->whereHas('userUserGroups', function (EloquentBuilder $query) use ($user) {
-                        $query->withUserId($user->getId())->withActive();
-                    })
-                    ->get();
-
-                $userRoles = [];
-                foreach ($userGroups as $userGroup) {
-                    $userRoles[] = (int) $userGroup->roleId;
-                }
-                $loggedInAsUserId = Validation::loggedInAs();
-                $loggedInAsUserData = null;
-                if ($loggedInAsUserId) {
-                    $loggedInAsUser = Repo::user()->get($loggedInAsUserId);
-                    $loggedInAsUserData = [
-                        'username' => $loggedInAsUser->getData('userName'),
-                        'initials' => $loggedInAsUser->getDisplayInitials(),
-                    ];
-                }
-
-                $currentUser = [
-                    'csrfToken' => $this->_request->getSession()->token(),
-                    'id' => (int) $user->getId(),
-                    'roles' => array_values(array_unique($userRoles)),
-                    'unreadTasksCount' => Notification::getUnreadNotificationsCount($user->getId()),
-                    'fullName' => $user->getFullName(),
-                    'username' => $user->getData('userName'),
-                    'initials' => $user->getDisplayInitials(),
-                    'isUserLoggedInAs' => (bool) $loggedInAsUserId,
-                    'loggedInAsUser' => $loggedInAsUserData,
-                ];
-                $output .= 'pkp.currentUser = ' . json_encode($currentUser) . ';';
-            }
-        }
-
-        $contexts = ['backend'];
+        // Expose the window.pkp payload for the frontend client runtime
         if ($this->isVueRuntimeIncluded) {
-            $contexts[] = 'frontend';
+            $this->addJavaScript(
+                'pkpAppData',
+                app(\PKP\frontend\Frontend::class)->js()->toScript(),
+                [
+                    'priority' => self::STYLE_SEQUENCE_NORMAL,
+                    'contexts' => ['frontend'],
+                    'inline' => true,
+                ]
+            );
         }
 
-        $this->addJavaScript(
-            'pkpAppData',
-            $output,
-            [
-                'priority' => self::STYLE_SEQUENCE_NORMAL,
-                'contexts' => $contexts,
-                'inline' => true,
-            ]
-        );
+        if ($this->isBackendPage) {
+            // Output global constants used in new component library.
+            // Locale keys are populated separately through the _i18n/ui.js
+            // script registered in setupBackendPage().
+            $output = 'window.pkp = window.pkp || {};';
+            if (!empty($this->_constants)) {
+                $output .= 'pkp.const = ' . json_encode($this->_constants) . ';';
+            }
+
+            $dispatcher = Application::get()->getDispatcher();
+            $request = Application::get()->getRequest();
+            $context = $request->getContext();
+
+            // Site-wide values that are not scoped to the currently selected context.
+            $output .= 'pkp.site = ' . json_encode([
+                'baseUrl' => $request->getBaseUrl(),
+            ]) . ';';
+
+            $output .= 'pkp.tinyMCE = ' . json_encode([
+                'skinUrl' => $this->getTinyMceSkinUrl($request),
+            ]) . ';';
+
+            $pageContext = [
+                'app' => Application::get()->getName(),
+                'id' => $context?->getId() ?? null,
+                'currentLocale' => Locale::getLocale(),
+                'primaryLocale' => Locale::getPrimaryLocale(),
+                'apiBaseUrl' => $dispatcher->url($request, PKPApplication::ROUTE_API, $context?->getPath() ?: Application::SITE_CONTEXT_PATH),
+                'pageBaseUrl' => $dispatcher->url($request, PKPApplication::ROUTE_PAGE, $context?->getPath() ?: Application::SITE_CONTEXT_PATH) . '/',
+                'legacyGridBaseUrl' => $dispatcher->url(
+                    $request,
+                    Application::ROUTE_COMPONENT,
+                    null,
+                    'componentHandler',
+                    'action',
+                    null,
+                ),
+                'helpUrl' => Application::get()->getHelpUrl(),
+                'timeZone' => Config::getVar('general', 'time_zone'),
+                'navigationMenuMaxDepth' => (int) Config::getVar('interface', 'navigation_menu_max_depth', PKPNavigationMenuController::DEFAULT_MAX_DEPTH),
+                'featureFlags' => []
+            ];
+
+            if ($context) {
+                $pageContext = array_merge($pageContext, [
+                    'dateFormatShort' => PKPString::convertStrftimeFormat($context->getLocalizedDateFormatShort()),
+                    'dateFormatLong' => PKPString::convertStrftimeFormat($context->getLocalizedDateFormatLong()),
+                    'datetimeFormatShort' => PKPString::convertStrftimeFormat($context->getLocalizedDateTimeFormatShort()),
+                    'datetimeFormatLong' => PKPString::convertStrftimeFormat($context->getLocalizedDateTimeFormatLong()),
+                    'timeFormat' => PKPString::convertStrftimeFormat($context->getLocalizedTimeFormat()),
+                    'supportedLocales' => $context?->getSupportedLocaleNames(LocaleMetadata::LANGUAGE_LOCALE_ONLY),
+                    'supportedFormLocales' => $context?->getSupportedFormLocaleNames()
+                ]);
+            } else {
+                $pageContext = array_merge($pageContext, [
+                    'dateFormatShort' => PKPString::convertStrftimeFormat(Config::getVar('general', 'date_format_short')),
+                    'dateFormatLong' => PKPString::convertStrftimeFormat(Config::getVar('general', 'date_format_long')),
+                    'datetimeFormatShort' => PKPString::convertStrftimeFormat(Config::getVar('general', 'datetime_format_short')),
+                    'datetimeFormatLong' => PKPString::convertStrftimeFormat(Config::getVar('general', 'datetime_format_long')),
+                    'timeFormat' => PKPString::convertStrftimeFormat(Config::getVar('general', 'time_format')),
+                    'supportedLocales' => !PKPSessionGuard::isSessionDisable() ? $request->getSite()->getSupportedLocaleNames(LocaleMetadata::LANGUAGE_LOCALE_ONLY) : [],
+                ]);
+            }
+
+            $output .= 'pkp.context = ' . json_encode($pageContext) . ';';
+
+            // Load current user data
+            if (Application::isInstalled()) {
+                $user = $this->_request->getUser();
+                if ($user) {
+                    // Fetch user groups where the user is assigned
+                    $userGroups = UserGroup::query()
+                        ->whereHas('userUserGroups', function (EloquentBuilder $query) use ($user) {
+                            $query->withUserId($user->getId())->withActive();
+                        })
+                        ->get();
+
+                    $userRoles = [];
+                    foreach ($userGroups as $userGroup) {
+                        $userRoles[] = (int) $userGroup->roleId;
+                    }
+                    $loggedInAsUserId = Validation::loggedInAs();
+                    $loggedInAsUserData = null;
+                    if ($loggedInAsUserId) {
+                        $loggedInAsUser = Repo::user()->get($loggedInAsUserId);
+                        $loggedInAsUserData = [
+                            'username' => $loggedInAsUser->getData('userName'),
+                            'initials' => $loggedInAsUser->getDisplayInitials(),
+                        ];
+                    }
+
+                    $currentUser = [
+                        'csrfToken' => $this->_request->getSession()->token(),
+                        'id' => (int) $user->getId(),
+                        'roles' => array_values(array_unique($userRoles)),
+                        'unreadTasksCount' => Notification::getUnreadNotificationsCount($user->getId()),
+                        'fullName' => $user->getFullName(),
+                        'username' => $user->getData('userName'),
+                        'initials' => $user->getDisplayInitials(),
+                        'isUserLoggedInAs' => (bool) $loggedInAsUserId,
+                        'loggedInAsUser' => $loggedInAsUserData,
+                    ];
+                    $output .= 'pkp.currentUser = ' . json_encode($currentUser) . ';';
+                }
+            }
+
+            $this->addJavaScript(
+                'pkpAppData',
+                $output,
+                [
+                    'priority' => self::STYLE_SEQUENCE_NORMAL,
+                    'contexts' => ['backend'],
+                    'inline' => true,
+                ]
+            );
+        }
 
         // Give any hooks registered against the TemplateManager
         // the opportunity to modify behavior; otherwise, display
