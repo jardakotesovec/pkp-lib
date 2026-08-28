@@ -147,50 +147,42 @@ class UserCommentController extends PKPBaseController
     /**
      * Gets the publicly accessible comments for a publication.
      * Accepts the following query parameters:
-     * publicationIds(required, array) publication IDs to fetch comments for.
+     * submissionIds(required, array) publication IDs to fetch comments for.
      * page(integer) - The pagination page to retrieve records from.
      */
     public function getManyPublic(Request $illuminateRequest): JsonResponse
     {
-        $publicationIdsRaw = paramToArray($illuminateRequest->query('publicationIds') ?? []);
+        $submissionIdsRaw = paramToArray($illuminateRequest->query('submissionIds') ?? []);
 
-        if (empty($publicationIdsRaw)) {
+        if (empty($submissionIdsRaw)) {
             return response()->json(['error' => __('api.userComments.400.missingPublicationParam')], Response::HTTP_BAD_REQUEST);
         }
 
-        $publicationIds = [];
-        $publicationCache = collect();
-
-        foreach ($publicationIdsRaw as $id) {
+        $submissionIds = [];
+        foreach ($submissionIdsRaw as $id) {
             if (!filter_var($id, FILTER_VALIDATE_INT)) {
                 return response()->json([
-                    'error' => __('api.userComments.400.invalidPublicationId', ['publicationId' => $id])
+                    'error' => __('api.userComments.400.invalidSubmissionId', ['submissionId' => $id])
                 ], Response::HTTP_BAD_REQUEST);
             }
 
-            $id = (int)$id;
-            $publication = $publicationCache->get($id);
-
-            if (!$publication) {
-                $publication = Repo::publication()->get($id);
-
-                if ($publication) {
-                    $publicationCache->put($id, $publication);
-                }
-            }
-
-            if (!$publication || $publication->getData('status') !== PKPPublication::STATUS_PUBLISHED) {
-                return response()->json([
-                    'error' => __('api.404.resourceNotFound'),
-                ], Response::HTTP_NOT_FOUND);
-            }
-
-            $publicationIds[] = $id;
+            $submissionIds[] = (int)$id;
         }
+
+        $contextId = $this->getRequest()->getContext()->getId();
+
+        // Only the published versions of submissions in this context have public comments.
+        $publicationIds = Repo::publication()
+            ->getCollector()
+            ->filterByContextIds([$contextId])
+            ->filterBySubmissionIds($submissionIds)
+            ->filterByStatus([PKPPublication::STATUS_PUBLISHED])
+            ->getIds()
+            ->toArray();
 
         $user = $this->getRequest()->getUser();
 
-        $query = UserComment::withContextIds([$this->getRequest()->getContext()->getId()])
+        $query = UserComment::withContextIds([$contextId])
             ->withPublicationIds($publicationIds)
             ->where(function ($query) use ($user) {
                 $query->where('is_approved', true);
@@ -316,14 +308,29 @@ class UserCommentController extends PKPBaseController
         $currentUser = $request->getUser();
         $requestBody = $illuminateRequest->validated();
 
-        $publicationId = (int)$requestBody['publicationId'];
+        if (!$context) {
+            return response()->json([
+                'error' => __('api.404.resourceNotFound'),
+            ], Response::HTTP_NOT_FOUND);
+        }
+
+        $submissionId = (int)$requestBody['submissionId'];
         $commentText = $requestBody['commentText'];
+
+        $submission = Repo::submission()->get($submissionId, $context->getId());
+        $publication = $submission?->getCurrentPublication();
+
+        if (!$submission || !$publication) {
+            return response()->json([
+                'error' => __('api.404.resourceNotFound'),
+            ], Response::HTTP_NOT_FOUND);
+        }
 
         $createdComment = UserComment::query()->create(
             [
                 'userId' => $currentUser->getId(),
                 'contextId' => $context->getId(),
-                'publicationId' => $publicationId,
+                'publicationId' => $publication->getId(),
                 'commentText' => $commentText,
                 'isApproved' => false,
             ]
