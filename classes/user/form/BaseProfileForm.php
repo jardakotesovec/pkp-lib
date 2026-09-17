@@ -75,7 +75,7 @@ abstract class BaseProfileForm extends Form
 
             $invite = new ChangeProfileEmailInvite();
 
-            $invite->initialize($user->getId());
+            $invite->initialize($user->getId(), $request->getContext()?->getId());
 
             $invite->getPayload()->newEmail = $functionArgs['emailUpdated'];
 
